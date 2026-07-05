@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1a0f2e" />
+  <title>The Love Duel 💍</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💍</text></svg>" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- HOME -->
+    <section class="screen active" id="screen-home">
+      <div class="hero">
+        <div class="ring-emoji">💍</div>
+        <h1>The Love Duel</h1>
+        <p class="tagline">Two phones. One quiz.<br />The loser proposes. 💕</p>
+      </div>
+      <div class="home-actions">
+        <input id="name-input" class="text-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
+        <button class="btn btn-primary" id="btn-create">Create a game</button>
+        <div class="divider"><span>or</span></div>
+        <input id="code-input" class="text-input code-field" type="text" maxlength="4" placeholder="ROOM CODE" autocomplete="off" autocapitalize="characters" />
+        <button class="btn btn-secondary" id="btn-join">Join a game</button>
+      </div>
+      <p class="error-text" id="home-error"></p>
+    </section>
+
+    <!-- LOBBY -->
+    <section class="screen" id="screen-lobby">
+      <h2 class="lobby-title">Waiting room</h2>
+      <div class="code-card">
+        <span class="code-label">Room code</span>
+        <span class="code-big" id="lobby-code">----</span>
+        <span class="code-hint">Have your partner enter this on their phone</span>
+      </div>
+      <ul class="player-list" id="player-list"></ul>
+      <p class="lobby-status" id="lobby-status">Waiting for your partner to join…</p>
+      <button class="btn btn-primary" id="btn-start" disabled>Start the duel</button>
+    </section>
+
+    <!-- QUESTION -->
+    <section class="screen" id="screen-question">
+      <div class="q-top">
+        <span class="q-counter" id="q-counter">Question 1</span>
+        <div class="q-timer-bar"><div class="q-timer-fill" id="q-timer-fill"></div></div>
+      </div>
+      <h2 class="q-text" id="q-text"></h2>
+      <div class="choices" id="choices"></div>
+      <p class="q-wait" id="q-wait"></p>
+    </section>
+
+    <!-- ROUND RESULT -->
+    <section class="screen" id="screen-result">
+      <div class="result-badge" id="result-badge">✓</div>
+      <h2 class="result-headline" id="result-headline"></h2>
+      <p class="result-correct" id="result-correct"></p>
+      <div class="scoreboard" id="scoreboard"></div>
+    </section>
+
+    <!-- GAME OVER / LOSER -->
+    <section class="screen" id="screen-lost">
+      <div class="verdict-emoji">🎬</div>
+      <h2 class="verdict-title">The results are in…</h2>
+      <div class="scoreboard" id="lost-scoreboard"></div>
+      <p class="verdict-text" id="lost-text"></p>
+      <div class="proposal-script">
+        <p class="script-label">Here's an idea if you need one 💬</p>
+        <p class="script-body" id="proposal-script"></p>
+      </div>
+      <button class="btn btn-propose" id="btn-propose">Get down on one knee 💍</button>
+      <p class="proposal-waiting hidden" id="lost-waiting">You popped the question…<br />waiting for their answer 🥹</p>
+    </section>
+
+    <!-- GAME OVER / WINNER -->
+    <section class="screen" id="screen-won">
+      <div class="verdict-emoji">👑</div>
+      <h2 class="verdict-title">The results are in…</h2>
+      <div class="scoreboard" id="won-scoreboard"></div>
+      <p class="verdict-text" id="won-text"></p>
+      <p class="won-waiting" id="won-waiting">Any second now… 👀</p>
+    </section>
+
+    <!-- PROPOSAL POPUP (winner sees the big question) -->
+    <section class="screen proposal-stage" id="screen-proposal">
+      <div class="big-ring">💍</div>
+      <h2 class="proposal-question" id="proposal-question">Will you marry me?</h2>
+      <button class="btn btn-yes" id="btn-yes">YES! 🥰</button>
+      <p class="proposal-sub">(there's really only one right answer here)</p>
+    </section>
+
+    <!-- CELEBRATION -->
+    <section class="screen celebrate" id="screen-celebrate">
+      <div class="celebrate-inner">
+        <div class="big-ring pulse">💍</div>
+        <h1 class="celebrate-title">THEY SAID YES!</h1>
+        <p class="celebrate-sub" id="celebrate-sub">Congratulations 🥂</p>
+        <div class="hearts" id="hearts"></div>
+      </div>
+      <button class="btn btn-secondary btn-again" id="btn-again">Play again</button>
+    </section>
+
+  </div>
+
+  <div id="confetti"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
