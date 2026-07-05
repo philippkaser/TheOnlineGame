@@ -16,7 +16,7 @@ However the duel ends, someone gets down on one knee.
 2. The other phone types the code into **RAUMCODE** and taps **Duell beitreten**.
 3. In the waiting room, **dress up your fighter** — pick a cosmetic
    (👑 crown, 👸 tiara, 😇 angel wings + halo, 😈 devil horns, 🐰 bunny ears,
-   🎩 top hat, 🎀 bow, 🌙 moon, ⭐ star) that you wear the whole duel.
+   🌿 god/goddess, 🎀 bow, 🌙 moon, ⭐ star) that you wear the whole duel.
 4. The host taps **Duell starten**. Both phones show the same moonlit arena.
 5. **Left thumb moves, right thumb aims and fires hearts** (twin-stick controls).
    **Double-tap the left side to dash** for a quick dodge. Duck behind the
@@ -142,7 +142,10 @@ Gameplay knobs live at the top of [`server.js`](./server.js):
 | `MAX_HP`, `ROUNDS_TO_WIN` | health per round, rounds to win |
 | `OBSTACLES` | the cover layout (kept point-symmetric so it's fair) |
 
-The German proposal lines are the `SCRIPTS` array in `public/app.js`.
+The German copy lives in `public/app.js`: `LOVE_NOTES` (the couple lines shown
+between rounds), `WIN_TEXTS` / `LOSE_TEXTS` (game-end messages) and `SCRIPTS`
+(the proposal lines) — all picked at random, so each round and match reads
+differently.
 
 ## How it works
 
@@ -157,7 +160,7 @@ The German proposal lines are the `SCRIPTS` array in `public/app.js`.
   pink / lavender / mint, thin dusty-mauve outlines, gentle shading). All the
   in-game art is **illustrated SVG sprites** (authored inline in `app.js`,
   bundled — no network needed): the fighters, the feathered **angel wings**,
-  the cosmetics (crown, tiara, horns, bunny ears, top hat, bow, moon, star) and
+  the cosmetics (crown, tiara, horns, bunny ears, god/goddess wreath, bow, moon, star) and
   the power-up icons are drawn from those sprites onto the `<canvas>`; the same
   sprites appear in the lobby picker. It runs **client-side prediction** of your
   own player (so movement feels instant) with smooth server reconciliation,

@@ -154,7 +154,7 @@ function send(ws, msg) {
 function broadcast(room, msg) {
   for (const p of room.players) send(p.ws, msg);
 }
-const COSMETICS = ['none', 'crown', 'tiara', 'angel', 'horns', 'bunny', 'tophat', 'collar', 'moon', 'star'];
+const COSMETICS = ['none', 'crown', 'tiara', 'angel', 'horns', 'bunny', 'god', 'collar', 'moon', 'star'];
 
 function publicPlayers(room) {
   return room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected, cosmetic: p.cosmetic || 'none' }));

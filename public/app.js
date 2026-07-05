@@ -118,11 +118,16 @@ function bunnySVG() {
     </g>
   </svg>`;
 }
-function tophatSVG() {
-  return `<svg ${S_NS} viewBox='0 0 100 74'>
-    <rect x='6' y='56' width='88' height='12' rx='6' fill='#cbb6e8' stroke='#9d84c4' stroke-width='3.5'/>
-    <rect x='28' y='8' width='44' height='52' rx='6' fill='#d9c8f2' stroke='#9d84c4' stroke-width='3.5'/>
-    <rect x='28' y='44' width='44' height='12' fill='#ff9ec9' stroke='#e58cb6' stroke-width='3'/>
+// Laurel wreath for the God / Goddess cosmetic (open at the top).
+function godSVG() {
+  const leaf = (cx, cy, rot) =>
+    `<ellipse cx='${cx}' cy='${cy}' rx='6.5' ry='11' transform='rotate(${rot} ${cx} ${cy})'/>`;
+  return `<svg ${S_NS} viewBox='0 0 100 80'>
+    <g fill='#ffe6a3' stroke='#e6b85a' stroke-width='3' stroke-linejoin='round'>
+      ${leaf(20, 62, 42)}${leaf(15, 47, 22)}${leaf(17, 31, -2)}${leaf(26, 18, -28)}${leaf(40, 10, -52)}
+      ${leaf(80, 62, -42)}${leaf(85, 47, -22)}${leaf(83, 31, 2)}${leaf(74, 18, 28)}${leaf(60, 10, 52)}
+    </g>
+    <circle cx='50' cy='68' r='5.5' fill='#ff9ec9' stroke='#e58cb6' stroke-width='2.5'/>
   </svg>`;
 }
 function bowSVG() {
@@ -174,7 +179,7 @@ function buildSprites() {
   SPR.cos_angel = svgImg(haloSVG());
   SPR.cos_horns = svgImg(hornsSVG());
   SPR.cos_bunny = svgImg(bunnySVG());
-  SPR.cos_tophat = svgImg(tophatSVG());
+  SPR.cos_god = svgImg(godSVG());
   SPR.cos_collar = svgImg(bowSVG());
   SPR.cos_moon = svgImg(moonSVG());
   SPR.cos_star = svgImg(starSVG(PAL.gold, '#e6c977'));
@@ -204,21 +209,28 @@ const COSMETIC_MENU = [
   { id: 'angel', emoji: '😇', label: 'Engel' },
   { id: 'horns', emoji: '😈', label: 'Teufel' },
   { id: 'bunny', emoji: '🐰', label: 'Hase' },
-  { id: 'tophat', emoji: '🎩', label: 'Gentleman' },
+  { id: 'god', emoji: '🌿', label: 'Gott/Göttin' },
   { id: 'collar', emoji: '🎀', label: 'Schleife' },
   { id: 'moon', emoji: '🌙', label: 'Luna' },
   { id: 'star', emoji: '⭐', label: 'Stern' },
 ];
 const COSMETIC_EMOJI = Object.fromEntries(COSMETIC_MENU.map((c) => [c.id, c.emoji]));
 
-// Sweet nothings shown between rounds.
+// Playful couple lines shown between rounds — a mix of sweet nothings and
+// silly little stakes so every round feels different.
 const LOVE_NOTES = [
-  'Kämpfe schön, mein Schatz 💕',
-  'Möge die/der Verliebtere gewinnen 💘',
-  'Alles ist fair in Liebe & Herzchen 🌹',
-  'Ich hab dich zum Fressen gern 😘',
-  'Nur ein Spiel — aber mein Herz meint es ernst ❤️',
-  'Küsschen zählen leider nicht als Treffer 💋',
+  'Kämpft fair, knutscht danach 😚',
+  'Verlierer der Runde kocht heute Abend 🍝',
+  'Team „wir gegen den Abwasch" 🧼',
+  'Gewinner sucht den nächsten Film aus 🎬',
+  'Kein Schmollen bei Niederlage, versprochen? 🤞',
+  'Ich mag dich. Trotzdem: gnadenlos. 😼',
+  'Verlierer gibt Rückenmassage 💆',
+  'Wer verliert, holt morgen die Croissants 🥐',
+  'Du siehst süß aus, wenn du zielst 🥰',
+  'Loser darf sich eine Umarmung abholen 🤗',
+  'Wetten, ich krieg dich? 😏💗',
+  'Egal wer gewinnt — wir gehen zusammen heim 🏠',
 ];
 
 const state = {
@@ -1035,7 +1047,7 @@ function drawWing(cx, cy, rad, dir, flap) {
 // Where each cosmetic sprite sits relative to the body: [dx, dy, widthFactor].
 const COS_PLACE = {
   crown: [0, -1.02, 1.7], tiara: [0, -0.95, 1.55], angel: [0, -1.35, 1.5],
-  horns: [0, -1.05, 1.7], bunny: [0, -1.35, 1.8], tophat: [0, -1.15, 1.7],
+  horns: [0, -1.05, 1.7], bunny: [0, -1.35, 1.8], god: [0, -0.75, 2.05],
   collar: [0, 0.85, 1.35], moon: [0, -1.3, 1.05], star: [0, -1.3, 1.05],
 };
 function drawCosmetic(id, cx, cy, rad) {
@@ -1341,23 +1353,25 @@ function drawHeart(cx, cy, size, color) {
 
 // --- Game over (messages vary every time) -----------------------------------
 const WIN_TEXTS = [
-  (w, l) => `Sieg für <b>${w}</b>! (๑>ᴗ<๑)♡<br />Lehn dich zurück — <b>${l}</b> schuldet dir eine sehr wichtige Frage…`,
-  (w, l) => `<b>${w}</b> hat gewonnen! ٩(♡ε♡)۶<br />Und jetzt… macht <b>${l}</b> dir einen Antrag~ ♡`,
-  (w, l) => `Zu süß, zu stark: <b>${w}</b> siegt! ✧<br />Zeit, dass <b>${l}</b> auf die Knie geht (˶ᵔ ᵕ ᵔ˶)`,
-  (w, l) => `Gewonnen, <b>${w}</b>! ♡( ◡‿◡ )<br /><b>${l}</b> ist jetzt dran mit der großen Frage…`,
+  (w, l) => `Sieg für <b>${w}</b>! 💖<br />Lehn dich zurück — <b>${l}</b> schuldet dir eine sehr wichtige Frage…`,
+  (w, l) => `<b>${w}</b> gewinnt das Herz-Duell! 🏆<br />Und jetzt ist <b>${l}</b> an der Reihe, auf die Knie zu gehen…`,
+  (w, l) => `Süß und siegreich: <b>${w}</b>! ✨<br />Zeit, dass <b>${l}</b> dir die große Frage stellt…`,
+  (w, l) => `Ganz meins und obendrein Gewinner: <b>${w}</b>! 💕<br /><b>${l}</b>, du weißt, was jetzt kommt…`,
+  (w, l) => `<b>${w}</b> hat gewonnen — wie immer unfassbar niedlich dabei. 🥰<br /><b>${l}</b> ist mit dem Antrag dran!`,
 ];
 const LOSE_TEXTS = [
-  (l, w) => `Besiegt, <b>${l}</b>! (｡•́︿•̀｡)<br />Du weißt, was das heißt… mach <b>${w}</b> einen Antrag ♡`,
-  (l, w) => `Ohhh nein, <b>${l}</b> verliert~ (>﹏<)<br />Auf die Knie mit dir — <b>${w}</b> wartet! 💍`,
-  (l, w) => `<b>${l}</b>, du hast verloren (๑•́ ₃ •̀๑)<br />Aber Herzchen: jetzt kommt DEIN großer Moment für <b>${w}</b>~`,
-  (l, w) => `Aus, vorbei, verknallt-verloren, <b>${l}</b>! ⋆｡°✩<br />Zeit für den Antrag an <b>${w}</b> ♡`,
+  (l, w) => `Knapp verloren, <b>${l}</b>! 🙈<br />Du weißt, was das heißt… mach <b>${w}</b> einen Antrag ♡`,
+  (l, w) => `Diesmal war <b>${w}</b> schneller, <b>${l}</b>. 💗<br />Runter auf ein Knie — dein großer Moment!`,
+  (l, w) => `Ausgeschossen, <b>${l}</b>! 😌<br />Zum Trost darfst du <b>${w}</b> die schönste Frage stellen…`,
+  (l, w) => `Verliebt und verloren, <b>${l}</b>. ⋆˚✩<br />Zeit für den Antrag an <b>${w}</b>!`,
+  (l, w) => `Kopf hoch, <b>${l}</b> — Verlieren gegen <b>${w}</b> zählt kaum. 💞<br />Jetzt aber: der Antrag!`,
 ];
 const SCRIPTS = [
   (name) => `${name}, du hast mich besiegt — aber mein Herz hast du schon längst. Willst du mich heiraten? ♡`,
-  (name) => `Ich würd jedes Duell verlieren, solang ich für immer bei dir sein darf. ${name}, heiratest du mich? (๑>ᴗ<๑)`,
-  (name) => `Nun, ${name}, du gewinnst — und ich gewinne jeden Tag mit dir. Willst du mich heiraten? ٩(♡ε♡)۶`,
-  (name) => `${name}, mein Herz macht seit dir nur noch Doki-Doki. Willst du für immer meins sein? Heirat mich! ♡`,
-  (name) => `Verloren hab ich das Spiel, aber gewonnen hab ich dich. ${name}, willst du mich heiraten? ⋆˚✩`,
+  (name) => `Ich würd jedes Duell verlieren, solang ich für immer bei dir sein darf. ${name}, heiratest du mich?`,
+  (name) => `${name}, du gewinnst hier — und ich gewinne jeden Tag mit dir. Willst du mich heiraten?`,
+  (name) => `Verloren hab ich das Spiel, aber gewonnen hab ich dich. ${name}, willst du mich heiraten? ✨`,
+  (name) => `${name}, mit dir will ich noch tausend Runden verlieren. Machst du mich zum glücklichsten Menschen — heiratest du mich?`,
 ];
 const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
