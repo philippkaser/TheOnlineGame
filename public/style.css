@@ -212,6 +212,30 @@ h2 { font-size: 1.6rem; margin: 0 0 0.4em; line-height: 1.2; }
 }
 .how-to { color: var(--muted); font-size: 0.85rem; margin-top: 14px; max-width: 320px; line-height: 1.5; }
 
+/* --- Cosmetic picker (lobby) --- */
+.cosmetic-picker { width: 100%; max-width: 360px; margin: 4px 0 18px; }
+.picker-label { display: block; color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
+.cosmetic-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.cosmetic-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  border: 2px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.15s, background 0.15s;
+}
+.cosmetic-btn:active { transform: scale(0.92); }
+.cosmetic-btn.selected { border-color: var(--gold); background: rgba(255, 215, 106, 0.18); }
+.cos-emoji { font-size: 1.4rem; line-height: 1; }
+.cos-label { font-size: 0.6rem; color: var(--muted); }
+.cosmetic-btn.selected .cos-label { color: var(--text); }
+.li-cos { font-size: 1.2rem; margin-left: auto; }
+
 /* --- Emote bar (in-game) --- */
 .emote-bar {
   position: absolute;

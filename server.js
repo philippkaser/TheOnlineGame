@@ -154,8 +154,10 @@ function send(ws, msg) {
 function broadcast(room, msg) {
   for (const p of room.players) send(p.ws, msg);
 }
+const COSMETICS = ['none', 'crown', 'tiara', 'angel', 'horns', 'bunny', 'tophat', 'collar', 'moon', 'star'];
+
 function publicPlayers(room) {
-  return room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected }));
+  return room.players.map((p) => ({ id: p.id, name: p.name, connected: p.connected, cosmetic: p.cosmetic || 'none' }));
 }
 function pushLobby(room) {
   broadcast(room, { type: 'lobby', code: room.code, players: publicPlayers(room) });
@@ -168,6 +170,7 @@ function newEntity(p, i) {
   return {
     id: p.id,
     spawn: i,
+    cosmetic: p.cosmetic || 'none',
     x: SPAWNS[i].x,
     y: SPAWNS[i].y,
     vx: 0,
@@ -569,6 +572,7 @@ function broadcastState(room) {
     players: g.entities.map((e) => ({
       id: e.id,
       spawn: e.spawn,
+      cosmetic: e.cosmetic,
       x: Math.round(e.x * 10) / 10,
       y: Math.round(e.y * 10) / 10,
       vx: Math.round(e.vx),
@@ -671,7 +675,7 @@ function handleMessage(ws, msg) {
   switch (msg.type) {
     case 'create': {
       const room = makeRoom();
-      const p = { id: genId(), ws, name: (msg.name || 'Spieler 1').slice(0, 20), connected: true };
+      const p = { id: genId(), ws, name: (msg.name || 'Spieler 1').slice(0, 20), connected: true, cosmetic: 'none' };
       room.players.push(p);
       ws.roomCode = room.code;
       ws.playerId = p.id;
@@ -698,12 +702,21 @@ function handleMessage(ws, msg) {
         p.ws = ws;
         if (msg.name) p.name = msg.name.slice(0, 20);
       } else {
-        p = { id: genId(), ws, name: (msg.name || 'Spieler 2').slice(0, 20), connected: true };
+        p = { id: genId(), ws, name: (msg.name || 'Spieler 2').slice(0, 20), connected: true, cosmetic: 'none' };
         room.players.push(p);
       }
       ws.roomCode = room.code;
       ws.playerId = p.id;
       send(ws, { type: 'joined', code: room.code, playerId: p.id, isHost: room.players[0].id === p.id });
+      pushLobby(room);
+      break;
+    }
+    case 'setCosmetic': {
+      const room = rooms.get(ws.roomCode);
+      if (!room || room.phase !== 'lobby') return;
+      const player = room.players.find((p) => p.id === ws.playerId);
+      if (!player) return;
+      player.cosmetic = COSMETICS.includes(msg.cosmetic) ? msg.cosmetic : 'none';
       pushLobby(room);
       break;
     }

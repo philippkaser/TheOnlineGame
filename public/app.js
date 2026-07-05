@@ -18,6 +18,21 @@ const POWERUPS = {
   charm: { emoji: '💋', ring: '#ff4d6d', label: 'Kuss' },
 };
 
+// Lobby "dress up" options. `id` matches the server + the canvas drawing.
+const COSMETIC_MENU = [
+  { id: 'none', emoji: '🚫', label: 'Keins' },
+  { id: 'crown', emoji: '👑', label: 'König' },
+  { id: 'tiara', emoji: '👸', label: 'Prinzessin' },
+  { id: 'angel', emoji: '😇', label: 'Engel' },
+  { id: 'horns', emoji: '😈', label: 'Teufel' },
+  { id: 'bunny', emoji: '🐰', label: 'Hase' },
+  { id: 'tophat', emoji: '🎩', label: 'Gentleman' },
+  { id: 'collar', emoji: '🎀', label: 'Schleife' },
+  { id: 'moon', emoji: '🌙', label: 'Luna' },
+  { id: 'star', emoji: '⭐', label: 'Stern' },
+];
+const COSMETIC_EMOJI = Object.fromEntries(COSMETIC_MENU.map((c) => [c.id, c.emoji]));
+
 // Sweet nothings shown between rounds.
 const LOVE_NOTES = [
   'Kämpfe schön, mein Schatz 💕',
@@ -39,6 +54,7 @@ const state = {
   self: null, // predicted { x, y, vx, vy, dashUntil, dashReadyAt, prevDash }
   selfFx: {},
   selfCharm: 0,
+  myCosmetic: 'none',
   opp: {}, // smoothed opponent render pos by id
   input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false, dash: false },
   inputTimer: null,
@@ -160,14 +176,38 @@ function handleMessage(msg) {
   }
 }
 
+function buildCosmeticPicker() {
+  const grid = $('#cosmetic-grid');
+  if (grid.dataset.built) return;
+  grid.dataset.built = '1';
+  COSMETIC_MENU.forEach((c) => {
+    const btn = document.createElement('button');
+    btn.className = 'cosmetic-btn';
+    btn.dataset.id = c.id;
+    btn.innerHTML = `<span class="cos-emoji">${c.emoji}</span><span class="cos-label">${c.label}</span>`;
+    btn.addEventListener('click', () => {
+      state.myCosmetic = c.id;
+      sendMsg({ type: 'setCosmetic', cosmetic: c.id });
+      refreshCosmeticHighlight();
+    });
+    grid.appendChild(btn);
+  });
+}
+function refreshCosmeticHighlight() {
+  $$('#cosmetic-grid .cosmetic-btn').forEach((b) => b.classList.toggle('selected', b.dataset.id === state.myCosmetic));
+}
+
 function renderLobby(msg) {
   state.code = msg.code;
   $('#lobby-code').textContent = msg.code;
+  buildCosmeticPicker();
+  refreshCosmeticHighlight();
   const list = $('#player-list');
   list.innerHTML = '';
   msg.players.forEach((p) => {
+    const cos = p.cosmetic && p.cosmetic !== 'none' ? ` <span class="li-cos">${COSMETIC_EMOJI[p.cosmetic] || ''}</span>` : '';
     const li = document.createElement('li');
-    li.innerHTML = `<span class="dot"></span><span>${escapeHtml(p.name)}${p.id === state.playerId ? ' (du)' : ''}</span>`;
+    li.innerHTML = `<span class="dot"></span><span>${escapeHtml(p.name)}${p.id === state.playerId ? ' (du)' : ''}</span>${cos}`;
     list.appendChild(li);
   });
   if (msg.players.length < 2) {
@@ -554,44 +594,107 @@ function playerRenderPos(p) {
 let backdrop = [];
 function buildBackdrop() {
   backdrop = [];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 60; i++) {
     backdrop.push({
       x: Math.random(),
       y: Math.random(),
-      s: 0.4 + Math.random() * 1.1,
-      sp: 0.008 + Math.random() * 0.02,
+      s: 0.5 + Math.random() * 1.4,
       ph: Math.random() * Math.PI * 2,
-      heart: Math.random() < 0.5,
+      tw: 1.5 + Math.random() * 2.5, // twinkle speed
     });
   }
 }
 
-function drawSky(t) {
-  const g = ctx.createLinearGradient(0, 0, 0, view.cssH);
-  g.addColorStop(0, '#3a1b4e');
-  g.addColorStop(0.45, '#7a2f5e');
-  g.addColorStop(0.8, '#c94f7c');
-  g.addColorStop(1, '#ff9a8b');
-  ctx.fillStyle = g;
+function drawMoon(t) {
+  const { w, h } = state.cfg.arena;
+  const mx = wx(w * 0.76);
+  const my = wy(h * 0.15);
+  const rad = wsc(46);
+  ctx.save();
+  // Soft glow.
+  const glow = ctx.createRadialGradient(mx, my, rad * 0.4, mx, my, rad * 2.2);
+  glow.addColorStop(0, 'rgba(255,246,214,0.35)');
+  glow.addColorStop(1, 'rgba(255,246,214,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(mx, my, rad * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+  // Body.
+  const body = ctx.createRadialGradient(mx - rad * 0.3, my - rad * 0.3, rad * 0.2, mx, my, rad);
+  body.addColorStop(0, '#fffdf4');
+  body.addColorStop(1, '#ecdca6');
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(mx, my, rad, 0, Math.PI * 2);
+  ctx.fill();
+  // Craters.
+  ctx.fillStyle = 'rgba(180,160,110,0.35)';
+  const craters = [[-0.3, -0.1, 0.18], [0.25, 0.2, 0.14], [0.05, -0.4, 0.1], [-0.1, 0.35, 0.12]];
+  for (const [dx, dy, cr] of craters) {
+    ctx.beginPath();
+    ctx.arc(mx + dx * rad, my + dy * rad, cr * rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNight(t) {
+  const { w, h } = state.cfg.arena;
+  // Full-canvas dark backdrop so the letterbox stays dark.
+  ctx.fillStyle = '#0c0720';
   ctx.fillRect(0, 0, view.cssW, view.cssH);
 
-  // Drifting hearts + twinkling sparkles.
+  // Arena floor (deep night gradient).
+  const g = ctx.createLinearGradient(0, wy(0), 0, wy(h));
+  g.addColorStop(0, '#241147');
+  g.addColorStop(1, '#160c2e');
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 26;
+  ctx.fillStyle = g;
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
+  ctx.fill();
+  ctx.restore();
+
+  // Clip to the arena for stars + moon.
+  ctx.save();
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
+  ctx.clip();
+  drawMoon(t);
+  // Twinkling stars.
   for (const d of backdrop) {
-    const y = (d.y - ((t * d.sp) % 1) + 1) % 1;
-    const px = d.x * view.cssW + Math.sin(t + d.ph) * 12;
-    const py = y * view.cssH;
-    const tw = 0.25 + 0.2 * (Math.sin(t * 2 + d.ph) + 1);
-    if (d.heart) {
-      drawHeart(px, py, 6 * d.s, `rgba(255,220,235,${tw * 0.7})`);
-    } else {
-      ctx.globalAlpha = tw;
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(px, py, d.s * 1.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
+    const px = wx(d.x * w);
+    const py = wy(d.y * h);
+    const a = 0.3 + 0.35 * (Math.sin(t * d.tw + d.ph) + 1);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(px, py, d.s, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
+  // Faint grid.
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let gx = 60; gx < w; gx += 60) {
+    ctx.beginPath();
+    ctx.moveTo(wx(gx), wy(0));
+    ctx.lineTo(wx(gx), wy(h));
+    ctx.stroke();
+  }
+  for (let gy = 60; gy < h; gy += 60) {
+    ctx.beginPath();
+    ctx.moveTo(wx(0), wy(gy));
+    ctx.lineTo(wx(w), wy(gy));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Border.
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
+  ctx.stroke();
 }
 
 function roundRect(x, y, w, h, r) {
@@ -604,53 +707,32 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawFlowerBed(o) {
+function drawObstacle(o) {
   const x = wx(o.x);
   const y = wy(o.y);
   const w = wsc(o.w);
   const h = wsc(o.h);
-  const r = Math.min(w, h) * 0.28;
-  // Soft shadow.
+  const r = Math.min(w, h) * 0.22;
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
-  ctx.shadowBlur = 14;
-  ctx.shadowOffsetY = 5;
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
   const g = ctx.createLinearGradient(x, y, x, y + h);
-  g.addColorStop(0, '#5fbf7a');
-  g.addColorStop(1, '#2f8f57');
+  g.addColorStop(0, '#4a2f78');
+  g.addColorStop(1, '#33205a');
   ctx.fillStyle = g;
   roundRect(x, y, w, h, r);
   ctx.fill();
   ctx.restore();
-  // Little flowers scattered on top (deterministic per obstacle).
-  const flowerColors = ['#ff6f91', '#ffd76a', '#ff9a8b', '#ffffff', '#ff5c8a'];
-  let seed = Math.round(o.x * 13 + o.y * 7);
-  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
-  const count = Math.max(3, Math.round((o.w * o.h) / 1400));
-  for (let i = 0; i < count; i++) {
-    const fx = x + 10 + rnd() * (w - 20);
-    const fy = y + 10 + rnd() * (h - 20);
-    const fr = wsc(4 + rnd() * 3);
-    const col = flowerColors[Math.floor(rnd() * flowerColors.length)];
-    ctx.fillStyle = col;
-    for (let p = 0; p < 5; p++) {
-      const a = (p / 5) * Math.PI * 2;
-      ctx.beginPath();
-      ctx.arc(fx + Math.cos(a) * fr, fy + Math.sin(a) * fr, fr * 0.7, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#ffe08a';
-    ctx.beginPath();
-    ctx.arc(fx, fy, fr * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1.5;
+  roundRect(x + 1, y + 1, w - 2, h - 2, r);
+  ctx.stroke();
 }
 
 function draw() {
-  const { w, h } = state.cfg.arena;
   const t = performance.now() / 1000;
   ctx.clearRect(0, 0, view.cssW, view.cssH);
-  drawSky(t);
 
   ctx.save();
   if (state.shake > 0) {
@@ -658,36 +740,10 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
   }
 
-  // Garden mat (the play area).
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur = 30;
-  const mat = ctx.createLinearGradient(0, wy(0), 0, wy(h));
-  mat.addColorStop(0, '#ffdbe6');
-  mat.addColorStop(1, '#ffc2d6');
-  ctx.fillStyle = mat;
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
-  ctx.fill();
-  ctx.restore();
-  // Soft heart lattice on the mat.
-  ctx.save();
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
-  ctx.clip();
-  ctx.globalAlpha = 0.5;
-  for (let gy = 40; gy < h; gy += 80) {
-    for (let gx = ((gy / 80) % 2 === 0 ? 40 : 80); gx < w; gx += 80) {
-      drawHeart(wx(gx), wy(gy), wsc(7), 'rgba(255,140,177,0.35)');
-    }
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
-  ctx.stroke();
+  drawNight(t);
 
-  // Obstacles as flower beds.
-  for (const o of state.cfg.obstacles) drawFlowerBed(o);
+  // Obstacles.
+  for (const o of state.cfg.obstacles) drawObstacle(o);
 
   const s = state.latest;
   if (s) {
@@ -790,79 +846,38 @@ function drawPlayer(p) {
     ctx.stroke();
   }
 
-  // Flapping wings (behind the body).
-  const flap = Math.sin(t * 14 + p.spawn) * 0.35;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  for (const dir of [-1, 1]) {
-    ctx.save();
-    ctx.scale(dir, 1);
-    ctx.rotate(-0.5 + flap);
-    ctx.beginPath();
-    ctx.moveTo(rad * 0.5, -rad * 0.2);
-    ctx.quadraticCurveTo(rad * 1.9, -rad * 1.2, rad * 1.7, rad * 0.2);
-    ctx.quadraticCurveTo(rad * 1.3, rad * 0.5, rad * 0.5, rad * 0.3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.restore();
+  // Cosmetic back layer (e.g. angel wings) sits behind the body.
+  drawCosmeticBack(p.cosmetic, cx, cy, rad, t);
 
-  // Body (glossy).
+  // Barrel (aim indicator).
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = wsc(6);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(p.angle) * rad * 1.5, cy + Math.sin(p.angle) * rad * 1.5);
+  ctx.stroke();
+
+  // Body (glossy sphere).
   ctx.save();
   if (p.fx.big > 0) {
     ctx.shadowColor = '#fb7185';
     ctx.shadowBlur = 24;
   }
-  const bg = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.2, cx, cy, rad);
-  bg.addColorStop(0, '#ffffff');
-  bg.addColorStop(0.35, color);
-  bg.addColorStop(1, shade(color, -0.25));
+  const bg = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.15, cx, cy, rad);
+  bg.addColorStop(0, shade(color, 0.4));
+  bg.addColorStop(0.55, color);
+  bg.addColorStop(1, shade(color, -0.3));
   ctx.fillStyle = bg;
   ctx.beginPath();
   ctx.arc(cx, cy, rad, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
-
-  // Face: blush + eyes + smile (upright, not rotated).
-  const eyeY = cy - rad * 0.12;
-  const eyeDx = rad * 0.4;
-  // Blush.
-  ctx.fillStyle = 'rgba(255,120,150,0.55)';
+  // Glossy highlight.
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.beginPath();
-  ctx.arc(cx - rad * 0.55, cy + rad * 0.15, rad * 0.22, 0, Math.PI * 2);
-  ctx.arc(cx + rad * 0.55, cy + rad * 0.15, rad * 0.22, 0, Math.PI * 2);
+  ctx.arc(cx - rad * 0.32, cy - rad * 0.35, rad * 0.28, 0, Math.PI * 2);
   ctx.fill();
-  if (charmed) {
-    // Hearts-in-eyes when lovestruck.
-    drawHeart(cx - eyeDx, eyeY, rad * 0.42, '#ff2d6d');
-    drawHeart(cx + eyeDx, eyeY, rad * 0.42, '#ff2d6d');
-  } else {
-    ctx.fillStyle = '#2a1630';
-    ctx.beginPath();
-    ctx.arc(cx - eyeDx, eyeY, rad * 0.14, 0, Math.PI * 2);
-    ctx.arc(cx + eyeDx, eyeY, rad * 0.14, 0, Math.PI * 2);
-    ctx.fill();
-    // Eye sparkle.
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(cx - eyeDx + rad * 0.05, eyeY - rad * 0.05, rad * 0.05, 0, Math.PI * 2);
-    ctx.arc(cx + eyeDx + rad * 0.05, eyeY - rad * 0.05, rad * 0.05, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Smile.
-  ctx.strokeStyle = '#2a1630';
-  ctx.lineWidth = Math.max(1.5, wsc(2));
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(cx, cy + rad * 0.28, rad * 0.32, 0.15 * Math.PI, 0.85 * Math.PI);
-  ctx.stroke();
-
-  // Aim pointer: a little heart at the rim in the aim direction.
-  const px = cx + Math.cos(p.angle) * (rad + wsc(9));
-  const py = cy + Math.sin(p.angle) * (rad + wsc(9));
-  drawHeart(px, py, wsc(9), '#fff');
 
   // Shield bubble.
   if (p.fx.shield > 0) {
@@ -875,11 +890,14 @@ function drawPlayer(p) {
     ctx.stroke();
   }
 
+  // Cosmetic front layer (crown, tiara, hat, ...).
+  drawCosmeticFront(p.cosmetic, cx, cy, rad, color, t);
+
   // Charmed: little hearts orbiting the head.
   if (charmed) {
     for (let i = 0; i < 3; i++) {
       const a = t * 3 + (i / 3) * Math.PI * 2;
-      drawHeart(cx + Math.cos(a) * (rad + 10), cy - rad - 6 + Math.sin(a) * 4, wsc(6), '#ff4d6d');
+      drawHeart(cx + Math.cos(a) * (rad + 12), cy - rad - 8 + Math.sin(a) * 4, wsc(6), '#ff4d6d');
     }
   }
 
@@ -919,6 +937,169 @@ function drawPlayer(p) {
   ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = r._hp > 40 ? '#4ade80' : '#fb7185';
   ctx.fillRect(bx, by, (bw * Math.max(0, r._hp)) / state.cfg.maxHp, bh);
+}
+
+// --- Cosmetics --------------------------------------------------------------
+function drawStar(cx, cy, r, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rr = i % 2 === 0 ? r : r * 0.45;
+    ctx[i === 0 ? 'moveTo' : 'lineTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawCosmeticBack(id, cx, cy, rad, t) {
+  if (id !== 'angel') return;
+  const flap = Math.sin(t * 6) * 0.12;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.shadowColor = 'rgba(255,255,255,0.5)';
+  ctx.shadowBlur = 8;
+  for (const dir of [-1, 1]) {
+    ctx.save();
+    ctx.scale(dir, 1);
+    ctx.rotate(-0.35 + flap);
+    ctx.beginPath();
+    ctx.moveTo(rad * 0.4, 0);
+    ctx.quadraticCurveTo(rad * 1.6, -rad * 1.1, rad * 1.95, -rad * 0.1);
+    ctx.quadraticCurveTo(rad * 1.4, rad * 0.05, rad * 1.7, rad * 0.5);
+    ctx.quadraticCurveTo(rad * 1.15, rad * 0.35, rad * 1.35, rad * 0.85);
+    ctx.quadraticCurveTo(rad * 0.8, rad * 0.55, rad * 0.4, rad * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawCosmeticFront(id, cx, cy, rad, color, t) {
+  const topY = cy - rad;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  if (id === 'crown') {
+    const w = rad * 1.5, h = rad * 0.85, x0 = cx - w / 2, base = topY + rad * 0.18;
+    const g = ctx.createLinearGradient(0, base - h, 0, base);
+    g.addColorStop(0, '#ffe680');
+    g.addColorStop(1, '#f2b705');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = '#b8860b';
+    ctx.lineWidth = Math.max(1, wsc(1.4));
+    ctx.beginPath();
+    ctx.moveTo(x0, base);
+    ctx.lineTo(x0, base - h * 0.5);
+    ctx.lineTo(x0 + w * 0.25, base - h * 0.1);
+    ctx.lineTo(cx, base - h);
+    ctx.lineTo(x0 + w * 0.75, base - h * 0.1);
+    ctx.lineTo(x0 + w, base - h * 0.5);
+    ctx.lineTo(x0 + w, base);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ff4d6d';
+    for (const gx of [x0 + w * 0.25, cx, x0 + w * 0.75]) {
+      ctx.beginPath();
+      ctx.arc(gx, base - h * 0.1, wsc(2.2), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (id === 'tiara') {
+    const w = rad * 1.25, base = topY + rad * 0.12, h = rad * 0.55, x0 = cx - w / 2;
+    ctx.strokeStyle = '#ffd1e8';
+    ctx.lineWidth = Math.max(2, wsc(3));
+    ctx.beginPath();
+    ctx.moveTo(x0, base);
+    ctx.quadraticCurveTo(cx, base - h * 1.4, x0 + w, base);
+    ctx.stroke();
+    ctx.fillStyle = '#ff69b4';
+    ctx.beginPath();
+    ctx.arc(cx, base - h * 0.8, wsc(3), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x0 + w * 0.5 - w * 0.3, base - h * 0.2, wsc(1.6), 0, Math.PI * 2);
+    ctx.arc(x0 + w * 0.5 + w * 0.3, base - h * 0.2, wsc(1.6), 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'angel') {
+    ctx.strokeStyle = '#ffe680';
+    ctx.lineWidth = Math.max(2, wsc(3));
+    ctx.shadowColor = '#ffe680';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.ellipse(cx, topY - rad * 0.55, rad * 0.6, rad * 0.22, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (id === 'horns') {
+    ctx.fillStyle = '#e0345a';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + dir * rad * 0.55, topY + rad * 0.2);
+      ctx.quadraticCurveTo(cx + dir * rad * 0.98, topY - rad * 0.2, cx + dir * rad * 0.68, topY - rad * 0.62);
+      ctx.quadraticCurveTo(cx + dir * rad * 0.5, topY - rad * 0.1, cx + dir * rad * 0.32, topY + rad * 0.12);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (id === 'bunny') {
+    for (const dir of [-1, 1]) {
+      ctx.save();
+      ctx.translate(cx + dir * rad * 0.32, topY + rad * 0.1);
+      ctx.rotate(dir * 0.22);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(0, -rad * 0.7, rad * 0.22, rad * 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffb6c1';
+      ctx.beginPath();
+      ctx.ellipse(0, -rad * 0.7, rad * 0.1, rad * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else if (id === 'tophat') {
+    const w = rad * 1.5, brimH = wsc(4), hatH = rad * 0.95, base = topY + rad * 0.12;
+    ctx.fillStyle = '#26123a';
+    roundRect(cx - w / 2, base - brimH, w, brimH, brimH / 2);
+    ctx.fill();
+    ctx.fillRect(cx - w * 0.3, base - hatH, w * 0.6, hatH - brimH + 2);
+    ctx.fillStyle = '#ff5c8a';
+    ctx.fillRect(cx - w * 0.3, base - brimH - wsc(4), w * 0.6, wsc(4));
+  } else if (id === 'collar') {
+    const by = cy + rad * 0.78;
+    const s = rad * 0.5;
+    ctx.fillStyle = '#ff2d6d';
+    ctx.beginPath();
+    ctx.moveTo(cx, by);
+    ctx.lineTo(cx - s, by - s * 0.55);
+    ctx.lineTo(cx - s, by + s * 0.55);
+    ctx.closePath();
+    ctx.moveTo(cx, by);
+    ctx.lineTo(cx + s, by - s * 0.55);
+    ctx.lineTo(cx + s, by + s * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#c81d4f';
+    ctx.beginPath();
+    ctx.arc(cx, by, wsc(3.2), 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'moon') {
+    const mx = cx, my = topY - rad * 0.5, mr = rad * 0.5;
+    ctx.fillStyle = '#ffe680';
+    ctx.shadowColor = '#ffe680';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(mx, my, mr, Math.PI * 0.35, Math.PI * 1.65, false);
+    ctx.arc(mx + mr * 0.5, my, mr * 0.9, Math.PI * 1.5, Math.PI * 0.5, true);
+    ctx.closePath();
+    ctx.fill();
+  } else if (id === 'star') {
+    drawStar(cx, topY - rad * 0.5, rad * 0.5, '#ffe680');
+  }
+  ctx.restore();
 }
 
 function drawHud(s) {
