@@ -153,15 +153,17 @@ The German proposal lines are the `SCRIPTS` array in `public/app.js`.
   handshake, and streams gameplay events (fires, hits, pickups, deaths) for the
   client's effects.
 - **`public/`** — the mobile-first German client (`index.html`, `style.css`,
-  `app.js`). Everything is hand-drawn on a `<canvas>` in a flat **kawaii /
-  menhera sticker style** (Needy-Streamer vibe): saturated pinks, bold dark
-  outlines, cute blushing dot-eyed fighters, flat pixel-y hearts, scattered
-  stars and sparkles — no soft 3D shading. Fighters wear the **cosmetic** you
-  picked in the lobby (crown, tiara, angel wings, horns, ears, top hat, bow,
-  moon, star). It runs **client-side prediction** of your own player (so
-  movement feels instant) with smooth server reconciliation, interpolates your
-  opponent, draws the twin-stick controls and emote bubbles, and auto-reconnects
-  if a phone briefly drops.
+  `app.js`). The art is a soft **pastel Y2K-kawaii illustration style** (baby
+  pink / lavender / mint, thin dusty-mauve outlines, gentle shading). All the
+  in-game art is **illustrated SVG sprites** (authored inline in `app.js`,
+  bundled — no network needed): the fighters, the feathered **angel wings**,
+  the cosmetics (crown, tiara, horns, bunny ears, top hat, bow, moon, star) and
+  the power-up icons are drawn from those sprites onto the `<canvas>`; the same
+  sprites appear in the lobby picker. It runs **client-side prediction** of your
+  own player (so movement feels instant) with smooth server reconciliation,
+  interpolates your opponent, draws the twin-stick controls and emote bubbles,
+  and auto-reconnects if a phone briefly drops. To restyle the art, edit the
+  `*SVG` builders near the top of `app.js`.
 - **`deploy/`** — the systemd unit and Caddyfile used above.
 
 No database, no build step. State lives in memory — perfect for a game you play

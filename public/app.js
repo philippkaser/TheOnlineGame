@@ -4,11 +4,186 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-const COLORS = ['#ff4fa3', '#4fd4ff']; // player spawn 0 / 1
-const COLORS_SOFT = ['rgba(255,79,163,', 'rgba(79,212,255,'];
-const OUTLINE = '#3a1030'; // sticker outline for the flat kawaii look
-// Kawaii / menhera palette (flat, saturated — Needy-Streamer vibe).
-const KW = { bg: '#ffcdeb', dot: 'rgba(255,120,196,0.55)', frame: '#ff2f92', obFill: '#c98cff', obTop: '#e3c4ff' };
+// Soft pastel Y2K-kawaii palette (baby pink / lavender / mint / cream,
+// thin dusty-mauve outlines) — matches the reference clip-art.
+const COLORS = ['#ff9ec9', '#a9c2ff']; // player spawn 0 / 1 (pink / periwinkle)
+const COLORS_SOFT = ['rgba(255,158,201,', 'rgba(169,194,255,'];
+const INK = '#c98aae'; // soft outline used on the canvas
+const PAL = {
+  bg1: '#ffe6f3', bg2: '#ece0ff',
+  line: '#d69cbe', lineSoft: 'rgba(214,156,190,0.5)',
+  ob: '#e7d6ff', obLine: '#c3a6e6', obHi: '#f3ecff',
+  p0: '#ffc3de', p0line: '#e58cb6',
+  p1: '#c3d4ff', p1line: '#8fa8e8',
+  cream: '#fff2cf', mint: '#c7f0dc', lav: '#e0d4ff', gold: '#ffd98a',
+};
+
+// ---------------------------------------------------------------------------
+//  Sprite system — illustrated art authored as inline SVG, drawn to canvas.
+// ---------------------------------------------------------------------------
+const SPR = {};
+function svgImg(svg) {
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = 'data:image/svg+xml;charset=utf8,' + encodeURIComponent(svg);
+  return img;
+}
+function sprReady(img) {
+  return img && img.complete && img.naturalWidth > 0;
+}
+function drawSprite(name, cx, cy, size, rot) {
+  const img = SPR[name];
+  if (!sprReady(img)) return false;
+  const ar = img.naturalWidth / img.naturalHeight || 1;
+  let w = size, h = size;
+  if (ar >= 1) h = size / ar;
+  else w = size * ar;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (rot) ctx.rotate(rot);
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+  return true;
+}
+
+// --- SVG art ----------------------------------------------------------------
+const S_NS = "xmlns='http://www.w3.org/2000/svg'";
+
+function playerSVG(fill, line, charmed) {
+  const eyes = charmed
+    ? `<path d='M30 50 q6 -9 12 0 q-6 9 -12 0z' fill='#ff5c93'/>
+       <path d='M58 50 q6 -9 12 0 q-6 9 -12 0z' fill='#ff5c93'/>`
+    : `<ellipse cx='37' cy='51' rx='6.5' ry='8' fill='#6b4a5c'/>
+       <ellipse cx='63' cy='51' rx='6.5' ry='8' fill='#6b4a5c'/>
+       <circle cx='39.5' cy='48' r='2.3' fill='#fff'/>
+       <circle cx='65.5' cy='48' r='2.3' fill='#fff'/>`;
+  return `<svg ${S_NS} viewBox='0 0 100 100'>
+    <circle cx='50' cy='52' r='43' fill='${fill}' stroke='${line}' stroke-width='4'/>
+    <ellipse cx='38' cy='34' rx='18' ry='12' fill='#ffffff' opacity='0.4'/>
+    ${eyes}
+    <ellipse cx='24' cy='62' rx='7.5' ry='5' fill='#ff9ec2' opacity='0.65'/>
+    <ellipse cx='76' cy='62' rx='7.5' ry='5' fill='#ff9ec2' opacity='0.65'/>
+    <path d='M42 65 q8 8 16 0' fill='none' stroke='#6b4a5c' stroke-width='3' stroke-linecap='round'/>
+  </svg>`;
+}
+
+// Cute cartoon wing (points right), white fill + soft pink outline + shoulder
+// curl + feather lines — modelled on the reference sheet.
+const WING_SVG = `<svg ${S_NS} viewBox='0 0 130 96'>
+  <g fill='#ffffff' stroke='#f2a6c6' stroke-width='3.4' stroke-linejoin='round' stroke-linecap='round'>
+    <path d='M18 82 C 2 54 16 14 52 12 C 42 26 44 40 42 50 C 66 40 92 44 116 36 C 104 62 82 82 48 88 C 34 90 24 88 18 82 Z'/>
+    <path fill='none' d='M40 78 C 62 66 86 58 108 44'/>
+    <path fill='none' d='M36 64 C 56 54 74 50 96 42'/>
+    <path fill='none' d='M52 20 C 40 16 34 28 42 33 C 48 36 50 27 45 26'/>
+  </g></svg>`;
+
+function crownSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 66'>
+    <path d='M10 58 L16 20 L34 42 L50 12 L66 42 L84 20 L90 58 Z'
+      fill='#ffe08a' stroke='#e0a94b' stroke-width='4' stroke-linejoin='round'/>
+    <circle cx='50' cy='30' r='6' fill='#ff9ec9' stroke='#e58cb6' stroke-width='2.5'/>
+    <circle cx='24' cy='40' r='4.5' fill='#a9c2ff' stroke='#8fa8e8' stroke-width='2'/>
+    <circle cx='76' cy='40' r='4.5' fill='#c7f0dc' stroke='#8fd6b0' stroke-width='2'/>
+    <rect x='8' y='56' width='84' height='9' rx='4' fill='#ffd98a' stroke='#e0a94b' stroke-width='3'/>
+  </svg>`;
+}
+function tiaraSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 54'>
+    <path d='M8 48 C 20 8 80 8 92 48' fill='none' stroke='#ffd1e8' stroke-width='7' stroke-linecap='round'/>
+    <path d='M30 40 C 40 20 60 20 70 40' fill='none' stroke='#ffd1e8' stroke-width='5' stroke-linecap='round'/>
+    <circle cx='50' cy='20' r='7' fill='#ff9ec9' stroke='#e58cb6' stroke-width='2.5'/>
+    <circle cx='24' cy='40' r='4' fill='#c3d4ff' stroke='#8fa8e8' stroke-width='2'/>
+    <circle cx='76' cy='40' r='4' fill='#c3d4ff' stroke='#8fa8e8' stroke-width='2'/>
+  </svg>`;
+}
+function haloSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 40'>
+    <ellipse cx='50' cy='20' rx='40' ry='13' fill='none' stroke='#ffe08a' stroke-width='7'/>
+    <ellipse cx='50' cy='20' rx='40' ry='13' fill='none' stroke='#fff6c8' stroke-width='2.5'/>
+  </svg>`;
+}
+function hornsSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 54'>
+    <path d='M26 52 C 6 34 12 10 30 6 C 24 22 30 36 40 46 Z' fill='#ffb3c6' stroke='#e07a97' stroke-width='3.5' stroke-linejoin='round'/>
+    <path d='M74 52 C 94 34 88 10 70 6 C 76 22 70 36 60 46 Z' fill='#ffb3c6' stroke='#e07a97' stroke-width='3.5' stroke-linejoin='round'/>
+  </svg>`;
+}
+function bunnySVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 80'>
+    <g stroke='#e58cb6' stroke-width='3.5' stroke-linejoin='round'>
+      <ellipse cx='34' cy='34' rx='13' ry='34' fill='#ffffff' transform='rotate(-12 34 34)'/>
+      <ellipse cx='66' cy='34' rx='13' ry='34' fill='#ffffff' transform='rotate(12 66 34)'/>
+      <ellipse cx='34' cy='36' rx='6' ry='22' fill='#ffc3de' transform='rotate(-12 34 36)'/>
+      <ellipse cx='66' cy='36' rx='6' ry='22' fill='#ffc3de' transform='rotate(12 66 36)'/>
+    </g>
+  </svg>`;
+}
+function tophatSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 74'>
+    <rect x='6' y='56' width='88' height='12' rx='6' fill='#cbb6e8' stroke='#9d84c4' stroke-width='3.5'/>
+    <rect x='28' y='8' width='44' height='52' rx='6' fill='#d9c8f2' stroke='#9d84c4' stroke-width='3.5'/>
+    <rect x='28' y='44' width='44' height='12' fill='#ff9ec9' stroke='#e58cb6' stroke-width='3'/>
+  </svg>`;
+}
+function bowSVG() {
+  return `<svg ${S_NS} viewBox='0 0 100 64'>
+    <path d='M50 32 L14 12 C 6 20 6 44 14 52 Z' fill='#ffb3d1' stroke='#e58cb6' stroke-width='3.5' stroke-linejoin='round'/>
+    <path d='M50 32 L86 12 C 94 20 94 44 86 52 Z' fill='#ffb3d1' stroke='#e58cb6' stroke-width='3.5' stroke-linejoin='round'/>
+    <circle cx='50' cy='32' r='11' fill='#ff9ec9' stroke='#e58cb6' stroke-width='3.5'/>
+  </svg>`;
+}
+function moonSVG() {
+  return `<svg ${S_NS} viewBox='0 0 70 70'>
+    <path d='M46 8 A30 30 0 1 0 46 62 A24 24 0 1 1 46 8 Z' fill='#fff2cf' stroke='#e6c977' stroke-width='4' stroke-linejoin='round'/>
+  </svg>`;
+}
+function starSVG(fill, line) {
+  return `<svg ${S_NS} viewBox='0 0 70 70'>
+    <path d='M35 5 L44 26 L67 28 L49 43 L55 66 L35 53 L15 66 L21 43 L3 28 L26 26 Z'
+      fill='${fill}' stroke='${line}' stroke-width='4' stroke-linejoin='round'/>
+  </svg>`;
+}
+// Heart used for projectiles / decor (crisp, soft outline).
+function heartSVG(fill, line) {
+  return `<svg ${S_NS} viewBox='0 0 40 36'>
+    <path d='M20 33 C 4 22 2 10 10 6 C 15 4 19 8 20 12 C 21 8 25 4 30 6 C 38 10 36 22 20 33 Z'
+      fill='${fill}' stroke='${line}' stroke-width='${line ? 2.6 : 0}' stroke-linejoin='round'/>
+  </svg>`;
+}
+
+// Powerup icons in the same pastel illustrated style (no emoji).
+const PU_SVG = {
+  heal: `<svg ${S_NS} viewBox='0 0 60 60'><path d='M23 10 h14 v13 h13 v14 h-13 v13 h-14 v-13 h-13 v-14 h13 Z' fill='#c7f0dc' stroke='#82ceaa' stroke-width='3.5' stroke-linejoin='round'/></svg>`,
+  rapid: `<svg ${S_NS} viewBox='0 0 60 60'><path d='M34 6 L14 34 L28 34 L24 54 L46 24 L32 24 Z' fill='#ffe08a' stroke='#e6b84f' stroke-width='3.5' stroke-linejoin='round'/></svg>`,
+  spread: `<svg ${S_NS} viewBox='0 0 60 60'>${['-18','0','18'].map((a)=>`<g transform='rotate(${a} 30 34)'><path d='M30 8 C 22 16 22 22 30 30 C 38 22 38 16 30 8 Z' fill='#e0d4ff' stroke='#b49ee0' stroke-width='3'/></g>`).join('')}</svg>`,
+  shield: `<svg ${S_NS} viewBox='0 0 60 60'><path d='M30 6 L50 14 V30 C50 44 40 52 30 55 C20 52 10 44 10 30 V14 Z' fill='#c3d4ff' stroke='#8fa8e8' stroke-width='3.5' stroke-linejoin='round'/><path d='M22 30 l6 7 l12 -14' fill='none' stroke='#fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/></svg>`,
+  speed: `<svg ${S_NS} viewBox='0 0 60 60'><g fill='none' stroke='#82ceaa' stroke-width='4' stroke-linecap='round'><path d='M12 22 h24'/><path d='M8 30 h30'/><path d='M14 38 h22'/></g></svg>`,
+  big: `<svg ${S_NS} viewBox='0 0 60 60'><path d='M30 50 C 8 34 6 16 16 11 C 23 8 28 13 30 18 C 32 13 37 8 44 11 C 54 16 52 34 30 50 Z' fill='#ff9ec9' stroke='#e58cb6' stroke-width='3.5' stroke-linejoin='round'/></svg>`,
+  cupid: `<svg ${S_NS} viewBox='0 0 60 60'><line x1='8' y1='46' x2='50' y2='14' stroke='#e0a94b' stroke-width='3.5' stroke-linecap='round'/><path d='M50 8 l6 4 l-4 6 Z' fill='#ffd98a' stroke='#e0a94b' stroke-width='2'/><path d='M14 40 l-6 6 l8 -1 Z' fill='#ffd98a' stroke='#e0a94b' stroke-width='2'/><path d='M30 48 C 16 37 15 25 22 22 C 27 20 30 24 31 27 C 32 24 35 20 40 22 C 47 25 44 37 30 48 Z' fill='#ff9ec9' stroke='#e58cb6' stroke-width='3'/></svg>`,
+  charm: `<svg ${S_NS} viewBox='0 0 60 60'><path d='M12 22 C 12 12 26 12 30 22 C 34 12 48 12 48 22 C 48 34 30 44 30 44 C 30 44 12 34 12 22 Z' fill='#ff7aa8' stroke='#e0537f' stroke-width='3'/><path d='M30 22 v20' stroke='#e0537f' stroke-width='2.5'/></svg>`,
+};
+
+function buildSprites() {
+  SPR.p0 = svgImg(playerSVG(PAL.p0, PAL.p0line, false));
+  SPR.p1 = svgImg(playerSVG(PAL.p1, PAL.p1line, false));
+  SPR.p0c = svgImg(playerSVG(PAL.p0, PAL.p0line, true));
+  SPR.p1c = svgImg(playerSVG(PAL.p1, PAL.p1line, true));
+  SPR.wing = svgImg(WING_SVG);
+  SPR.cos_crown = svgImg(crownSVG());
+  SPR.cos_tiara = svgImg(tiaraSVG());
+  SPR.cos_angel = svgImg(haloSVG());
+  SPR.cos_horns = svgImg(hornsSVG());
+  SPR.cos_bunny = svgImg(bunnySVG());
+  SPR.cos_tophat = svgImg(tophatSVG());
+  SPR.cos_collar = svgImg(bowSVG());
+  SPR.cos_moon = svgImg(moonSVG());
+  SPR.cos_star = svgImg(starSVG(PAL.gold, '#e6c977'));
+  SPR.heart0 = svgImg(heartSVG(COLORS[0], '#e58cb6'));
+  SPR.heart1 = svgImg(heartSVG(COLORS[1], '#8fa8e8'));
+  SPR.heartRed = svgImg(heartSVG('#ff7aa8', '#e0537f'));
+  for (const k of Object.keys(PU_SVG)) SPR['pu_' + k] = svgImg(PU_SVG[k]);
+}
+buildSprites();
 
 const POWERUPS = {
   heal: { emoji: '💚', ring: '#4ade80', label: 'Heilung' },
@@ -179,7 +354,8 @@ function buildCosmeticPicker() {
     const btn = document.createElement('button');
     btn.className = 'cosmetic-btn';
     btn.dataset.id = c.id;
-    btn.innerHTML = `<span class="cos-emoji">${c.emoji}</span><span class="cos-label">${c.label}</span>`;
+    const icon = cosmeticIconHTML(c.id, 'cos-img');
+    btn.innerHTML = `${icon}<span class="cos-label">${c.label}</span>`;
     btn.addEventListener('click', () => {
       state.myCosmetic = c.id;
       sendMsg({ type: 'setCosmetic', cosmetic: c.id });
@@ -191,6 +367,12 @@ function buildCosmeticPicker() {
 function refreshCosmeticHighlight() {
   $$('#cosmetic-grid .cosmetic-btn').forEach((b) => b.classList.toggle('selected', b.dataset.id === state.myCosmetic));
 }
+// Illustrated icon for a cosmetic (uses the same SVG sprite as the game).
+function cosmeticIconHTML(id, cls) {
+  const img = SPR['cos_' + id];
+  if (id === 'none' || !img) return `<span class="${cls} cos-none">✕</span>`;
+  return `<img class="${cls}" alt="" src="${img.src}">`;
+}
 
 function renderLobby(msg) {
   state.code = msg.code;
@@ -200,7 +382,7 @@ function renderLobby(msg) {
   const list = $('#player-list');
   list.innerHTML = '';
   msg.players.forEach((p) => {
-    const cos = p.cosmetic && p.cosmetic !== 'none' ? ` <span class="li-cos">${COSMETIC_EMOJI[p.cosmetic] || ''}</span>` : '';
+    const cos = p.cosmetic && p.cosmetic !== 'none' ? cosmeticIconHTML(p.cosmetic, 'li-cos') : '';
     const li = document.createElement('li');
     li.innerHTML = `<span class="dot"></span><span>${escapeHtml(p.name)}${p.id === state.playerId ? ' (du)' : ''}</span>${cos}`;
     list.appendChild(li);
@@ -614,51 +796,65 @@ function drawSparkle(cx, cy, r, color) {
   ctx.fill();
 }
 
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function drawKawaiiBg(t) {
   const { w, h } = state.cfg.arena;
-  // Letterbox = deeper pink; arena = flat bright pink (no gradients).
-  ctx.fillStyle = '#ff9ed2';
+  // Soft pastel wash (pink → lavender), letterbox slightly deeper.
+  const lb = ctx.createLinearGradient(0, 0, 0, view.cssH);
+  lb.addColorStop(0, '#ffd4ec');
+  lb.addColorStop(1, '#dcc9f5');
+  ctx.fillStyle = lb;
   ctx.fillRect(0, 0, view.cssW, view.cssH);
-  ctx.fillStyle = KW.bg;
-  ctx.fillRect(wx(0), wy(0), wsc(w), wsc(h));
+  const g = ctx.createLinearGradient(0, wy(0), 0, wy(h));
+  g.addColorStop(0, PAL.bg1);
+  g.addColorStop(1, PAL.bg2);
+  ctx.fillStyle = g;
+  rr(wx(0), wy(0), wsc(w), wsc(h), wsc(18));
+  ctx.fill();
 
-  // Clip to arena for the decorations.
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(wx(0), wy(0), wsc(w), wsc(h));
+  rr(wx(0), wy(0), wsc(w), wsc(h), wsc(18));
   ctx.clip();
-
   // Faint polka-heart tiling.
-  ctx.globalAlpha = 0.18;
-  for (let gy = 50; gy < h; gy += 84) {
-    for (let gx = ((gy / 84) % 2 < 1 ? 44 : 86); gx < w; gx += 84) {
-      drawHeartFlat(wx(gx), wy(gy), wsc(9), KW.dot, null);
+  ctx.globalAlpha = 0.14;
+  for (let gy = 50; gy < h; gy += 86) {
+    for (let gx = ((gy / 86) % 2 < 1 ? 46 : 89); gx < w; gx += 86) {
+      drawHeartFlat(wx(gx), wy(gy), wsc(9), '#e9b8d4', null);
     }
   }
   ctx.globalAlpha = 1;
-
   // Scattered cute stickers (gentle bob/twinkle).
   for (const d of backdrop) {
     const px = wx(d.x * w);
     const py = wy(d.y * h) + Math.sin(t * 1.6 + d.ph) * 4;
     const sz = wsc(d.s);
-    if (d.kind === 'heart') drawHeartFlat(px, py, sz, 'rgba(255,110,180,0.4)', null);
-    else if (d.kind === 'star') drawStar(px, py, sz, 'rgba(255,225,120,0.55)', null);
+    if (d.kind === 'heart') drawHeartFlat(px, py, sz * 0.8, 'rgba(230,150,190,0.35)', null);
+    else if (d.kind === 'star') drawStar(px, py, sz * 0.7, 'rgba(255,215,140,0.5)', null);
     else {
       const tw = 0.4 + 0.35 * (Math.sin(t * 3 + d.ph) + 1);
-      drawSparkle(px, py, sz * 0.7 * tw, 'rgba(255,255,255,0.7)');
+      drawSparkle(px, py, sz * 0.6 * tw, 'rgba(255,255,255,0.8)');
     }
   }
   ctx.restore();
 
-  // Bold flat sticker frame (hard corners, no shadow).
-  ctx.lineJoin = 'miter';
+  // Soft rounded frame.
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = wsc(7);
-  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
-  ctx.strokeStyle = KW.frame;
-  ctx.lineWidth = wsc(3);
-  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
+  ctx.lineWidth = wsc(6);
+  rr(wx(0), wy(0), wsc(w), wsc(h), wsc(18));
+  ctx.stroke();
+  ctx.strokeStyle = PAL.line;
+  ctx.lineWidth = wsc(2.5);
+  rr(wx(0), wy(0), wsc(w), wsc(h), wsc(18));
+  ctx.stroke();
 }
 
 function drawObstacle(o) {
@@ -666,16 +862,23 @@ function drawObstacle(o) {
   const y = wy(o.y);
   const w = wsc(o.w);
   const h = wsc(o.h);
-  // Flat two-tone block with a bold outline (sticker look, hard corners).
-  ctx.fillStyle = KW.obFill;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = KW.obTop;
-  ctx.fillRect(x, y, w, Math.max(3, h * 0.22));
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = Math.max(2, wsc(3));
-  ctx.strokeRect(x, y, w, h);
-  // A little heart sticker in the middle.
-  drawHeartFlat(x + w / 2, y + h / 2, Math.min(w, h) * 0.22, '#ffffff', null);
+  const rad = Math.min(w, h) * 0.26;
+  // Soft pastel rounded block with a gentle top highlight + thin outline.
+  rr(x, y, w, h, rad);
+  ctx.fillStyle = PAL.ob;
+  ctx.fill();
+  ctx.save();
+  rr(x, y, w, h, rad);
+  ctx.clip();
+  ctx.fillStyle = PAL.obHi;
+  rr(x, y, w, h * 0.42, rad);
+  ctx.fill();
+  ctx.restore();
+  rr(x, y, w, h, rad);
+  ctx.strokeStyle = PAL.obLine;
+  ctx.lineWidth = Math.max(2, wsc(2.5));
+  ctx.stroke();
+  drawHeartFlat(x + w / 2, y + h / 2, Math.min(w, h) * 0.2, '#ffffff', PAL.obLine);
 }
 
 function draw() {
@@ -695,7 +898,11 @@ function draw() {
   if (s) {
     drawPowerups(s.powerups);
     drawTrails();
-    for (const b of s.bullets) drawHeartFlat(wx(b.x), wy(b.y), wsc(b.r) * 1.8, COLORS[b.c] || '#fff', OUTLINE);
+    for (const b of s.bullets) {
+      if (!drawSprite('heart' + b.c, wx(b.x), wy(b.y), wsc(b.r) * 2.4)) {
+        drawHeartFlat(wx(b.x), wy(b.y), wsc(b.r) * 1.8, COLORS[b.c] || '#fff', INK);
+      }
+    }
     drawParticlesBehind();
     drawAimReticle(s);
     for (const p of s.players) drawPlayer(p);
@@ -727,7 +934,7 @@ function drawEmoteBubbles(s) {
     ctx.globalAlpha = fade;
     // Bubble.
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = OUTLINE;
+    ctx.strokeStyle = PAL.line;
     ctx.lineWidth = Math.max(2, wsc(2.5));
     ctx.beginPath();
     ctx.arc(bx, by, bw / 2, 0, Math.PI * 2);
@@ -752,32 +959,28 @@ function drawEmoteBubbles(s) {
 function drawPowerups(pus) {
   const t = performance.now() / 1000;
   for (const pu of pus) {
-    const info = POWERUPS[pu.t] || { emoji: '❔', ring: '#fff' };
     const cx = wx(pu.x);
     const cy = wy(pu.y) + Math.sin(t * 3 + pu.id) * 3; // gentle bob
-    const rad = wsc(17);
-    // Flat sticker disc with a bold outline.
-    ctx.fillStyle = '#fff';
+    const rad = wsc(18);
+    // Soft white sticker disc with a thin pastel outline.
+    ctx.fillStyle = '#fffafd';
     ctx.beginPath();
     ctx.arc(cx, cy, rad, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = info.ring;
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = OUTLINE;
+    ctx.strokeStyle = PAL.line;
     ctx.lineWidth = Math.max(2, wsc(2.5));
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
     ctx.stroke();
-    // Little sparkle accent.
-    drawSparkle(cx + rad * 0.7, cy - rad * 0.7, wsc(4) * (0.7 + 0.3 * Math.sin(t * 5 + pu.id)), '#fff');
-    ctx.font = `${Math.round(rad * 1.25)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(info.emoji, cx, cy + 1);
+    drawSparkle(cx + rad * 0.72, cy - rad * 0.72, wsc(4) * (0.7 + 0.3 * Math.sin(t * 5 + pu.id)), '#ffe6a8');
+    // Illustrated icon.
+    if (!drawSprite('pu_' + pu.t, cx, cy, rad * 1.5)) {
+      const info = POWERUPS[pu.t];
+      if (info) {
+        ctx.font = `${Math.round(rad * 1.2)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(info.emoji, cx, cy + 1);
+      }
+    }
   }
 }
 
@@ -817,126 +1020,119 @@ function drawAimReticle(s) {
   ctx.restore();
 }
 
+function drawWing(cx, cy, rad, dir, flap) {
+  const img = SPR.wing;
+  if (!sprReady(img)) return;
+  const w = rad * 2.2, ar = img.naturalWidth / img.naturalHeight || 1, h = w / ar;
+  ctx.save();
+  ctx.translate(cx, cy - rad * 0.15);
+  ctx.scale(dir, 1);
+  ctx.rotate(-0.12 + flap);
+  ctx.drawImage(img, rad * 0.25, -h * 0.55, w, h);
+  ctx.restore();
+}
+
+// Where each cosmetic sprite sits relative to the body: [dx, dy, widthFactor].
+const COS_PLACE = {
+  crown: [0, -1.02, 1.7], tiara: [0, -0.95, 1.55], angel: [0, -1.35, 1.5],
+  horns: [0, -1.05, 1.7], bunny: [0, -1.35, 1.8], tophat: [0, -1.15, 1.7],
+  collar: [0, 0.85, 1.35], moon: [0, -1.3, 1.05], star: [0, -1.3, 1.05],
+};
+function drawCosmetic(id, cx, cy, rad) {
+  const place = COS_PLACE[id];
+  if (!place) return;
+  drawSprite('cos_' + id, cx + place[0] * rad, cy + place[1] * rad, rad * place[2]);
+}
+
 function drawPlayer(p) {
   const r = playerRenderPos(p);
   const cx = wx(r.x);
   const cy = wy(r.y);
   const rad = wsc(state.cfg.playerR);
-  const color = COLORS[p.spawn];
   const dead = p.hp <= 0;
   const t = performance.now() / 1000;
   const charmed = (p.charmed || 0) > 0;
 
-  ctx.globalAlpha = dead ? 0.25 : 1;
-  const ol = Math.max(2.5, wsc(3.5)); // sticker outline width
+  ctx.globalAlpha = dead ? 0.3 : 1;
 
-  // Speed aura (flat dashed ring).
+  // Speed aura (soft dashed mint ring).
   if (p.fx.speed > 0) {
     ctx.save();
     ctx.setLineDash([wsc(5), wsc(5)]);
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + wsc(8) + Math.sin(t * 10) * 2, 0, Math.PI * 2);
-    ctx.strokeStyle = '#34d399';
+    ctx.arc(cx, cy, rad + wsc(9) + Math.sin(t * 10) * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = '#8fd6b0';
     ctx.lineWidth = wsc(3);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Cosmetic back layer (e.g. angel wings) sits behind the body.
-  drawCosmeticBack(p.cosmetic, cx, cy, rad, t);
+  // Angel wings sit behind the body.
+  if (p.cosmetic === 'angel') {
+    const flap = Math.sin(t * 5) * 0.08;
+    drawWing(cx, cy, rad, 1, flap);
+    drawWing(cx, cy, rad, -1, flap);
+  }
 
-  // "Big hearts" glow → flat outer ring.
+  // "Big hearts" → soft outer ring.
   if (p.fx.big > 0) {
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + wsc(5), 0, Math.PI * 2);
-    ctx.strokeStyle = '#ff8fb1';
+    ctx.arc(cx, cy, rad + wsc(6), 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffb3d1';
     ctx.lineWidth = wsc(3);
     ctx.stroke();
   }
 
-  // Aim pointer: a chunky flat nub poking out in the aim direction.
-  const tipx = cx + Math.cos(p.angle) * rad;
-  const tipy = cy + Math.sin(p.angle) * rad;
+  // Aim nub (soft) in the aim direction.
   const perp = p.angle + Math.PI / 2;
-  const pw = rad * 0.42;
+  const nx = cx + Math.cos(p.angle) * rad;
+  const ny = cy + Math.sin(p.angle) * rad;
+  const pw = rad * 0.34;
   ctx.beginPath();
-  ctx.moveTo(tipx + Math.cos(perp) * pw, tipy + Math.sin(perp) * pw);
-  ctx.lineTo(cx + Math.cos(p.angle) * (rad + wsc(11)), cy + Math.sin(p.angle) * (rad + wsc(11)));
-  ctx.lineTo(tipx - Math.cos(perp) * pw, tipy - Math.sin(perp) * pw);
+  ctx.moveTo(nx + Math.cos(perp) * pw, ny + Math.sin(perp) * pw);
+  ctx.lineTo(cx + Math.cos(p.angle) * (rad + wsc(10)), cy + Math.sin(p.angle) * (rad + wsc(10)));
+  ctx.lineTo(nx - Math.cos(perp) * pw, ny - Math.sin(perp) * pw);
   ctx.closePath();
-  ctx.fillStyle = shade(color, -0.15);
+  ctx.fillStyle = p.spawn === 0 ? PAL.p0line : PAL.p1line;
   ctx.fill();
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = ol;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
 
-  // Body: flat disc with a bold sticker outline.
-  ctx.beginPath();
-  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.lineWidth = ol;
-  ctx.strokeStyle = OUTLINE;
-  ctx.stroke();
-
-  // --- Cute face ---
-  const eyeY = cy - rad * 0.04;
-  const eyeDx = rad * 0.36;
-  // Blush.
-  ctx.fillStyle = 'rgba(255,120,160,0.7)';
-  ctx.beginPath();
-  ctx.arc(cx - rad * 0.5, cy + rad * 0.28, rad * 0.16, 0, Math.PI * 2);
-  ctx.arc(cx + rad * 0.5, cy + rad * 0.28, rad * 0.16, 0, Math.PI * 2);
-  ctx.fill();
-  if (charmed) {
-    drawHeartFlat(cx - eyeDx, eyeY, rad * 0.4, '#ff2d6d', null);
-    drawHeartFlat(cx + eyeDx, eyeY, rad * 0.4, '#ff2d6d', null);
-  } else {
-    ctx.fillStyle = OUTLINE;
+  // Body sprite (illustrated, face baked in). Fallback: soft disc.
+  const key = 'p' + p.spawn + (charmed ? 'c' : '');
+  if (!drawSprite(key, cx, cy, rad * 2.05)) {
     ctx.beginPath();
-    ctx.ellipse(cx - eyeDx, eyeY, rad * 0.13, rad * 0.17, 0, 0, Math.PI * 2);
-    ctx.ellipse(cx + eyeDx, eyeY, rad * 0.13, rad * 0.17, 0, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[p.spawn];
     ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(cx - eyeDx + rad * 0.05, eyeY - rad * 0.06, rad * 0.05, 0, Math.PI * 2);
-    ctx.arc(cx + eyeDx + rad * 0.05, eyeY - rad * 0.06, rad * 0.05, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = p.spawn === 0 ? PAL.p0line : PAL.p1line;
+    ctx.lineWidth = wsc(3);
+    ctx.stroke();
   }
-  // Tiny mouth.
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = Math.max(1.4, wsc(1.8));
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(cx, cy + rad * 0.3, rad * 0.16, 0.15 * Math.PI, 0.85 * Math.PI);
-  ctx.stroke();
 
   // Shield bubble.
   if (p.fx.shield > 0) {
     ctx.beginPath();
     ctx.arc(cx, cy, rad + wsc(10), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(120,220,255,${0.16 + Math.sin(t * 8) * 0.05})`;
+    ctx.fillStyle = `rgba(160,200,255,${0.18 + Math.sin(t * 8) * 0.05})`;
     ctx.fill();
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#9db8ff';
     ctx.lineWidth = wsc(2.5);
     ctx.stroke();
   }
 
-  // Cosmetic front layer (crown, tiara, hat, ...).
-  drawCosmeticFront(p.cosmetic, cx, cy, rad, color, t);
+  // Cosmetic on top (crown, tiara, halo, ...).
+  drawCosmetic(p.cosmetic, cx, cy, rad);
 
   // Charmed: little hearts orbiting the head.
   if (charmed) {
     for (let i = 0; i < 3; i++) {
       const a = t * 3 + (i / 3) * Math.PI * 2;
-      drawHeartFlat(cx + Math.cos(a) * (rad + 12), cy - rad - 8 + Math.sin(a) * 4, wsc(6), '#ff4d6d', '#fff');
+      drawSprite('heartRed', cx + Math.cos(a) * (rad + wsc(12)), cy - rad - wsc(10) + Math.sin(a) * 4, wsc(13));
     }
   }
 
   // "You" ring.
   if (p.id === state.playerId) {
-    ctx.strokeStyle = '#ffd76a';
+    ctx.strokeStyle = '#ffcf5c';
     ctx.lineWidth = wsc(3);
     ctx.beginPath();
     ctx.arc(cx, cy, rad + wsc(6), 0, Math.PI * 2);
@@ -944,23 +1140,16 @@ function drawPlayer(p) {
   }
   ctx.globalAlpha = 1;
 
-  // Active-effect emoji stack above the player.
+  // Active-effect icons (little sprites) above the player.
   const active = [];
-  if (p.fx.rapid > 0) active.push('⚡');
-  if (p.fx.spread > 0) active.push('🔱');
-  if (p.fx.big > 0) active.push('💥');
-  if (p.fx.speed > 0) active.push('👟');
-  if (p.fx.shield > 0) active.push('🛡️');
-  if (p.fx.cupid > 0) active.push('💘');
-  if (p.fx.charm > 0) active.push('💋');
+  for (const k of ['rapid', 'spread', 'big', 'speed', 'shield', 'cupid', 'charm']) if (p.fx[k] > 0) active.push(k);
   if (active.length) {
-    ctx.font = `${Math.round(wsc(14))}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(active.join(''), cx, cy - rad - 26);
+    const isz = wsc(15);
+    const startx = cx - ((active.length - 1) * isz) / 2;
+    for (let i = 0; i < active.length; i++) drawSprite('pu_' + active[i], startx + i * isz, cy - rad - wsc(30), isz);
   }
 
-  // Health bar (flat, outlined, animated width).
+  // Health bar (soft, outlined, animated).
   const bw = rad * 2.6;
   const bh = Math.max(6, wsc(7));
   const bx = cx - bw / 2;
@@ -968,9 +1157,9 @@ function drawPlayer(p) {
   r._hp = r._hp == null ? p.hp : r._hp + (p.hp - r._hp) * 0.2;
   ctx.fillStyle = '#fff';
   ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = r._hp > 40 ? '#4ade80' : '#ff5c8a';
+  ctx.fillStyle = r._hp > 40 ? '#9fe6c2' : '#ffa6c6';
   ctx.fillRect(bx, by, (bw * Math.max(0, r._hp)) / state.cfg.maxHp, bh);
-  ctx.strokeStyle = OUTLINE;
+  ctx.strokeStyle = INK;
   ctx.lineWidth = Math.max(1.5, wsc(2));
   ctx.strokeRect(bx, by, bw, bh);
 }
@@ -994,150 +1183,6 @@ function drawStar(cx, cy, r, color, outline) {
   }
 }
 
-function drawCosmeticBack(id, cx, cy, rad, t) {
-  if (id !== 'angel') return;
-  const flap = Math.sin(t * 6) * 0.12;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.shadowColor = 'rgba(255,255,255,0.5)';
-  ctx.shadowBlur = 8;
-  for (const dir of [-1, 1]) {
-    ctx.save();
-    ctx.scale(dir, 1);
-    ctx.rotate(-0.35 + flap);
-    ctx.beginPath();
-    ctx.moveTo(rad * 0.4, 0);
-    ctx.quadraticCurveTo(rad * 1.6, -rad * 1.1, rad * 1.95, -rad * 0.1);
-    ctx.quadraticCurveTo(rad * 1.4, rad * 0.05, rad * 1.7, rad * 0.5);
-    ctx.quadraticCurveTo(rad * 1.15, rad * 0.35, rad * 1.35, rad * 0.85);
-    ctx.quadraticCurveTo(rad * 0.8, rad * 0.55, rad * 0.4, rad * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-function drawCosmeticFront(id, cx, cy, rad, color, t) {
-  const topY = cy - rad;
-  ctx.save();
-  ctx.lineJoin = 'round';
-  if (id === 'crown') {
-    const w = rad * 1.5, h = rad * 0.85, x0 = cx - w / 2, base = topY + rad * 0.18;
-    const g = ctx.createLinearGradient(0, base - h, 0, base);
-    g.addColorStop(0, '#ffe680');
-    g.addColorStop(1, '#f2b705');
-    ctx.fillStyle = g;
-    ctx.strokeStyle = '#b8860b';
-    ctx.lineWidth = Math.max(1, wsc(1.4));
-    ctx.beginPath();
-    ctx.moveTo(x0, base);
-    ctx.lineTo(x0, base - h * 0.5);
-    ctx.lineTo(x0 + w * 0.25, base - h * 0.1);
-    ctx.lineTo(cx, base - h);
-    ctx.lineTo(x0 + w * 0.75, base - h * 0.1);
-    ctx.lineTo(x0 + w, base - h * 0.5);
-    ctx.lineTo(x0 + w, base);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#ff4d6d';
-    for (const gx of [x0 + w * 0.25, cx, x0 + w * 0.75]) {
-      ctx.beginPath();
-      ctx.arc(gx, base - h * 0.1, wsc(2.2), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  } else if (id === 'tiara') {
-    const w = rad * 1.25, base = topY + rad * 0.12, h = rad * 0.55, x0 = cx - w / 2;
-    ctx.strokeStyle = '#ffd1e8';
-    ctx.lineWidth = Math.max(2, wsc(3));
-    ctx.beginPath();
-    ctx.moveTo(x0, base);
-    ctx.quadraticCurveTo(cx, base - h * 1.4, x0 + w, base);
-    ctx.stroke();
-    ctx.fillStyle = '#ff69b4';
-    ctx.beginPath();
-    ctx.arc(cx, base - h * 0.8, wsc(3), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(x0 + w * 0.5 - w * 0.3, base - h * 0.2, wsc(1.6), 0, Math.PI * 2);
-    ctx.arc(x0 + w * 0.5 + w * 0.3, base - h * 0.2, wsc(1.6), 0, Math.PI * 2);
-    ctx.fill();
-  } else if (id === 'angel') {
-    ctx.strokeStyle = '#ffe680';
-    ctx.lineWidth = Math.max(2, wsc(3));
-    ctx.shadowColor = '#ffe680';
-    ctx.shadowBlur = 10;
-    ctx.beginPath();
-    ctx.ellipse(cx, topY - rad * 0.55, rad * 0.6, rad * 0.22, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (id === 'horns') {
-    ctx.fillStyle = '#e0345a';
-    for (const dir of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + dir * rad * 0.55, topY + rad * 0.2);
-      ctx.quadraticCurveTo(cx + dir * rad * 0.98, topY - rad * 0.2, cx + dir * rad * 0.68, topY - rad * 0.62);
-      ctx.quadraticCurveTo(cx + dir * rad * 0.5, topY - rad * 0.1, cx + dir * rad * 0.32, topY + rad * 0.12);
-      ctx.closePath();
-      ctx.fill();
-    }
-  } else if (id === 'bunny') {
-    for (const dir of [-1, 1]) {
-      ctx.save();
-      ctx.translate(cx + dir * rad * 0.32, topY + rad * 0.1);
-      ctx.rotate(dir * 0.22);
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.ellipse(0, -rad * 0.7, rad * 0.22, rad * 0.8, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffb6c1';
-      ctx.beginPath();
-      ctx.ellipse(0, -rad * 0.7, rad * 0.1, rad * 0.55, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  } else if (id === 'tophat') {
-    const w = rad * 1.5, brimH = wsc(4), hatH = rad * 0.95, base = topY + rad * 0.12;
-    ctx.fillStyle = '#26123a';
-    ctx.fillRect(cx - w / 2, base - brimH, w, brimH);
-    ctx.fillRect(cx - w * 0.3, base - hatH, w * 0.6, hatH - brimH + 2);
-    ctx.fillStyle = '#ff5c8a';
-    ctx.fillRect(cx - w * 0.3, base - brimH - wsc(4), w * 0.6, wsc(4));
-  } else if (id === 'collar') {
-    const by = cy + rad * 0.78;
-    const s = rad * 0.5;
-    ctx.fillStyle = '#ff2d6d';
-    ctx.beginPath();
-    ctx.moveTo(cx, by);
-    ctx.lineTo(cx - s, by - s * 0.55);
-    ctx.lineTo(cx - s, by + s * 0.55);
-    ctx.closePath();
-    ctx.moveTo(cx, by);
-    ctx.lineTo(cx + s, by - s * 0.55);
-    ctx.lineTo(cx + s, by + s * 0.55);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#c81d4f';
-    ctx.beginPath();
-    ctx.arc(cx, by, wsc(3.2), 0, Math.PI * 2);
-    ctx.fill();
-  } else if (id === 'moon') {
-    const mx = cx, my = topY - rad * 0.5, mr = rad * 0.5;
-    ctx.fillStyle = '#ffe680';
-    ctx.shadowColor = '#ffe680';
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.arc(mx, my, mr, Math.PI * 0.35, Math.PI * 1.65, false);
-    ctx.arc(mx + mr * 0.5, my, mr * 0.9, Math.PI * 1.5, Math.PI * 0.5, true);
-    ctx.closePath();
-    ctx.fill();
-  } else if (id === 'star') {
-    drawStar(cx, topY - rad * 0.5, rad * 0.5, '#ffe680');
-  }
-  ctx.restore();
-}
 
 function drawHud(s) {
   const need = state.cfg.roundsToWin;

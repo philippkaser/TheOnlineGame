@@ -1,17 +1,17 @@
 :root {
-  --bg: #ffd1ec;
-  --ink: #3a1030;           /* sticker outline / text */
+  --bg: #ffe6f3;
+  --ink: #e2add0;           /* soft outline */
   --card: #ffffff;
-  --card-border: #3a1030;
-  --text: #3a1030;
-  --muted: #b23a78;
-  --pink: #ff4da6;
-  --pink-deep: #ff1f8f;
-  --cyan: #55d9ff;
-  --gold: #ffd23f;
-  --green: #34d399;
-  --red: #ff5c8a;
-  --shadow: 4px 5px 0 #3a1030;   /* hard sticker shadow, no blur */
+  --card-border: #ecc4de;
+  --text: #8a5a75;          /* readable plum */
+  --muted: #b98aa6;
+  --pink: #ffb0d4;
+  --pink-deep: #ff7eb5;
+  --cyan: #a9c2ff;
+  --gold: #ffd98a;
+  --green: #9fe6c2;
+  --red: #ffa6c6;
+  --shadow: 0 6px 16px rgba(214, 156, 190, 0.4);   /* soft pastel shadow */
   --script: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', 'Baloo 2', system-ui, cursive;
 }
 
@@ -26,9 +26,8 @@ body {
   font-family: var(--script);
   color: var(--text);
   background:
-    radial-gradient(circle at 18% 12%, rgba(255,255,255,0.5) 0 3px, transparent 4px) 0 0/46px 46px,
-    radial-gradient(circle at 60% 55%, rgba(255,120,196,0.35) 0 4px, transparent 5px) 0 0/40px 40px,
-    linear-gradient(160deg, #ff9ed6 0%, #ffc2e6 45%, #d8b6ff 100%);
+    radial-gradient(circle at 18% 12%, rgba(255,255,255,0.55) 0 3px, transparent 4px) 0 0/48px 48px,
+    linear-gradient(160deg, #ffe0f1 0%, #ffd0ea 45%, #e6d6ff 100%);
   background-attachment: fixed;
   overflow: hidden;
   user-select: none;
@@ -66,10 +65,10 @@ body {
 h1 {
   font-family: var(--script); font-weight: 700; font-size: 3rem; margin: 0.2em 0; line-height: 1.05;
   color: #fff;
-  text-shadow: 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink), 4px 5px 0 var(--pink);
+  text-shadow: 1.5px 1.5px 0 var(--pink-deep), -1.5px 1.5px 0 var(--pink-deep), 1.5px -1.5px 0 var(--pink-deep), -1.5px -1.5px 0 var(--pink-deep), 0 5px 14px rgba(214,150,185,0.5);
 }
-h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); }
-.tagline { color: var(--ink); font-size: 1.05rem; line-height: 1.5; margin: 0.5em 0 0; font-weight: 600; }
+h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--text); }
+.tagline { color: var(--text); font-size: 1.05rem; line-height: 1.5; margin: 0.5em 0 0; font-weight: 600; }
 
 /* --- Home --- */
 .hero { margin-bottom: 32px; }
@@ -84,9 +83,9 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   font-size: 1.1rem;
   font-family: inherit;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--text);
   background: var(--card);
-  border: 3px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 16px;
   outline: none;
   text-align: center;
@@ -107,7 +106,7 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   font-size: 1.2rem;
   font-family: inherit;
   font-weight: 800;
-  border: 3px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 16px;
   cursor: pointer;
   color: #fff;
@@ -118,19 +117,19 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
 .btn:active { transform: translate(4px, 5px); box-shadow: 0 0 0 var(--ink); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--pink); }
-.btn-secondary { background: #fff; color: var(--ink); }
+.btn-secondary { background: #fff; color: var(--text); }
 .btn-propose { background: var(--pink); color: #fff; font-size: 1.3rem; padding: 20px; margin-top: 8px; animation: wobble 1.8s ease-in-out infinite; }
 @keyframes wobble { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
-.btn-yes { background: var(--gold); color: var(--ink); font-size: 1.6rem; padding: 24px; max-width: 320px; }
+.btn-yes { background: var(--gold); color: var(--text); font-size: 1.6rem; padding: 24px; max-width: 320px; }
 .btn-again { max-width: 240px; margin-top: 28px; }
 
 .error-text { color: var(--pink-deep); min-height: 1.2em; margin-top: 16px; font-size: 0.95rem; font-weight: 700; }
 
 /* --- Lobby --- */
-.lobby-title { color: var(--ink); font-weight: 800; }
+.lobby-title { color: var(--text); font-weight: 800; }
 .code-card {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: var(--card); border: 3px solid var(--ink);
+  background: var(--card); border: 2px solid var(--ink);
   border-radius: 20px; padding: 20px 32px; margin-bottom: 22px; box-shadow: var(--shadow);
 }
 .code-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; }
@@ -140,14 +139,14 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
 .player-list { list-style: none; padding: 0; margin: 0 0 18px; width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; }
 .player-list li {
   display: flex; align-items: center; gap: 12px;
-  background: var(--card); border: 3px solid var(--ink);
-  border-radius: 14px; padding: 12px 16px; font-size: 1.1rem; font-weight: 700; color: var(--ink);
+  background: var(--card); border: 2px solid var(--ink);
+  border-radius: 14px; padding: 12px 16px; font-size: 1.1rem; font-weight: 700; color: var(--text);
   box-shadow: var(--shadow);
 }
 .player-list li .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); border: 2px solid var(--ink); }
 .player-list li.empty { color: var(--muted); font-style: italic; font-weight: 600; }
 .player-list li.empty .dot { background: #fff; opacity: 0.7; }
-.lobby-status { color: var(--ink); margin-bottom: 16px; font-weight: 700; }
+.lobby-status { color: var(--text); margin-bottom: 16px; font-weight: 700; }
 
 /* --- Question --- */
 .q-top { width: 100%; max-width: 420px; margin-bottom: 20px; }
@@ -187,8 +186,8 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
 
 /* --- Game over --- */
 .verdict-emoji { font-size: 4rem; margin-bottom: 6px; }
-.verdict-title { color: var(--ink); font-weight: 800; }
-.verdict-text { font-size: 1.25rem; line-height: 1.55; margin: 8px 0 18px; max-width: 400px; color: var(--ink); font-weight: 600; }
+.verdict-title { color: var(--text); font-weight: 800; }
+.verdict-text { font-size: 1.25rem; line-height: 1.55; margin: 8px 0 18px; max-width: 400px; color: var(--text); font-weight: 600; }
 .verdict-text b { color: var(--pink-deep); }
 .won-waiting { color: var(--muted); font-size: 1.1rem; font-weight: 700; animation: blink 1.6s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: 0.4; } }
@@ -199,13 +198,13 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   box-shadow: var(--shadow);
 }
 .script-label { color: var(--muted); font-size: 0.85rem; margin: 0 0 6px; font-weight: 700; }
-.script-body { font-size: 1.05rem; line-height: 1.5; margin: 0; color: var(--ink); font-weight: 600; }
+.script-body { font-size: 1.05rem; line-height: 1.5; margin: 0; color: var(--text); font-weight: 600; }
 .proposal-waiting { color: var(--pink-deep); font-size: 1.15rem; line-height: 1.5; margin-top: 20px; font-weight: 700; animation: blink 1.6s ease-in-out infinite; }
 
 /* --- Proposal stage (winner) --- */
 .proposal-stage { background: radial-gradient(circle at 50% 32%, #ffd0ec, #ff9ed6 70%, #d8b6ff); }
 .big-ring { font-size: 6rem; }
-.proposal-question { font-size: 2.2rem; max-width: 380px; margin: 18px 0 26px; color: var(--ink); }
+.proposal-question { font-size: 2.2rem; max-width: 380px; margin: 18px 0 26px; color: var(--text); }
 .proposal-sub { color: var(--muted); margin-top: 16px; font-size: 0.95rem; font-weight: 600; }
 
 /* --- Celebrate --- */
@@ -213,9 +212,9 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
 .celebrate-inner { display: flex; flex-direction: column; align-items: center; }
 .celebrate-title {
   font-size: 2.8rem; color: #fff; margin: 12px 0;
-  text-shadow: 2px 2px 0 var(--ink), -2px 2px 0 var(--ink), 2px -2px 0 var(--ink), -2px -2px 0 var(--ink);
+  text-shadow: 1.5px 1.5px 0 var(--pink-deep), -1.5px 1.5px 0 var(--pink-deep), 1.5px -1.5px 0 var(--pink-deep), -1.5px -1.5px 0 var(--pink-deep);
 }
-.celebrate-sub { font-size: 1.3rem; color: var(--ink); font-weight: 800; }
+.celebrate-sub { font-size: 1.3rem; color: var(--text); font-weight: 800; }
 .pulse { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1) rotate(-4deg); } 50% { transform: scale(1.15) rotate(4deg); } }
 
@@ -228,11 +227,11 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   touch-action: none;
   background: #ff9ed6;
 }
-.how-to { color: var(--ink); font-size: 0.85rem; margin-top: 14px; max-width: 320px; line-height: 1.5; font-weight: 600; }
+.how-to { color: var(--text); font-size: 0.85rem; margin-top: 14px; max-width: 320px; line-height: 1.5; font-weight: 600; }
 
 /* --- Cosmetic picker (lobby) --- */
 .cosmetic-picker { width: 100%; max-width: 360px; margin: 4px 0 18px; }
-.picker-label { display: block; color: var(--ink); font-size: 0.95rem; margin-bottom: 10px; font-weight: 800; }
+.picker-label { display: block; color: var(--text); font-size: 0.95rem; margin-bottom: 10px; font-weight: 800; }
 .cosmetic-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .cosmetic-btn {
   display: flex;
@@ -240,19 +239,20 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   align-items: center;
   gap: 2px;
   padding: 8px 2px 6px;
-  border: 3px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 14px;
   background: #fff;
-  color: var(--ink);
+  color: var(--text);
   cursor: pointer;
   transition: transform 0.1s, background 0.15s;
 }
 .cosmetic-btn:active { transform: scale(0.92); }
 .cosmetic-btn.selected { background: var(--gold); }
-.cos-emoji { font-size: 1.4rem; line-height: 1; }
+.cos-img { height: 30px; width: 30px; object-fit: contain; display: block; }
+.cos-none { display: flex; align-items: center; justify-content: center; height: 30px; font-size: 1.2rem; color: var(--muted); }
 .cos-label { font-size: 0.6rem; color: var(--muted); font-weight: 700; }
-.cosmetic-btn.selected .cos-label { color: var(--ink); }
-.li-cos { font-size: 1.3rem; margin-left: auto; }
+.cosmetic-btn.selected .cos-label { color: var(--text); }
+.li-cos { height: 30px; width: 30px; object-fit: contain; margin-left: auto; }
 
 /* --- Emote bar (in-game) --- */
 .emote-bar {
@@ -264,7 +264,7 @@ h2 { font-size: 1.7rem; margin: 0 0 0.4em; line-height: 1.2; color: var(--ink); 
   gap: 8px;
   padding: 6px 8px;
   background: #fff;
-  border: 3px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 999px;
   box-shadow: var(--shadow);
   z-index: 20;
