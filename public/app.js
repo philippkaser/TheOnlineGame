@@ -49,17 +49,17 @@ function getName() {
 // --- Home actions -----------------------------------------------------------
 $('#btn-create').addEventListener('click', () => {
   $('#home-error').textContent = '';
-  connect(() => sendMsg({ type: 'create', name: getName() || 'Player 1' }));
+  connect(() => sendMsg({ type: 'create', name: getName() || 'Spieler 1' }));
 });
 $('#btn-join').addEventListener('click', () => {
   const code = ($('#code-input').value || '').toUpperCase().trim();
   if (code.length !== 4) {
-    $('#home-error').textContent = 'Room codes are 4 letters.';
+    $('#home-error').textContent = 'Raumcodes haben 4 Buchstaben.';
     return;
   }
   $('#home-error').textContent = '';
   state.code = code;
-  connect(() => sendMsg({ type: 'join', code, name: getName() || 'Player 2' }));
+  connect(() => sendMsg({ type: 'join', code, name: getName() || 'Spieler 2' }));
 });
 $('#code-input').addEventListener('input', (e) => (e.target.value = e.target.value.toUpperCase()));
 $('#btn-start').addEventListener('click', () => sendMsg({ type: 'start' }));
@@ -119,7 +119,7 @@ function renderLobby(msg) {
   if (msg.players.length < 2) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.innerHTML = `<span class="dot"></span><span>Waiting for partner…</span>`;
+    li.innerHTML = `<span class="dot"></span><span>Warte auf Partner…</span>`;
     list.appendChild(li);
   }
   const ready = msg.players.length === 2 && msg.players.every((p) => p.connected);
@@ -127,10 +127,10 @@ function renderLobby(msg) {
   if (state.isHost) {
     startBtn.style.display = '';
     startBtn.disabled = !ready;
-    $('#lobby-status').textContent = ready ? "You're both here! 💕" : 'Waiting for your partner to join…';
+    $('#lobby-status').textContent = ready ? 'Ihr seid beide da! 💕' : 'Warte auf deinen Partner…';
   } else {
     startBtn.style.display = 'none';
-    $('#lobby-status').textContent = ready ? 'Waiting for the host to start…' : 'Waiting for your partner to join…';
+    $('#lobby-status').textContent = ready ? 'Warte auf den Host…' : 'Warte auf deinen Partner…';
   }
 }
 
@@ -340,12 +340,9 @@ function draw() {
 
   const s = state.latest;
   if (s) {
-    // Bullets.
+    // Hearts (projectiles).
     for (const b of s.bullets) {
-      ctx.beginPath();
-      ctx.fillStyle = COLORS[b[2]] || '#fff';
-      ctx.arc(wx(b[0]), wy(b[1]), ws(state.cfg.bulletR), 0, Math.PI * 2);
-      ctx.fill();
+      drawHeart(wx(b[0]), wy(b[1]), ws(state.cfg.bulletR) * 1.7, COLORS[b[2]] || '#fff');
     }
     // Players (smoothed).
     for (const p of s.players) {
@@ -359,6 +356,26 @@ function draw() {
   }
 
   drawSticks();
+}
+
+function drawHeart(cx, cy, size, color) {
+  // Path authored in a roughly ±16 unit box, then scaled to `size`.
+  const k = size / 14;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(k, k);
+  ctx.beginPath();
+  ctx.moveTo(0, 5);
+  ctx.bezierCurveTo(-2, 1, -9, -3, -9, -8);
+  ctx.bezierCurveTo(-9, -13, -4, -13, 0, -8);
+  ctx.bezierCurveTo(4, -13, 9, -13, 9, -8);
+  ctx.bezierCurveTo(9, -3, 2, 1, 0, 5);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawPlayer(p, r) {
@@ -419,7 +436,7 @@ function drawHud(s) {
   // Left = you.
   const you = ordered[0];
   const opp = ordered[1];
-  drawPips(view.ox + 14, y, need, you.wins, COLORS[you.spawn], 'left', you.id === state.playerId ? 'YOU' : '');
+  drawPips(view.ox + 14, y, need, you.wins, COLORS[you.spawn], 'left', you.id === state.playerId ? 'DU' : '');
   drawPips(view.ox + ws(state.cfg.arena.w) - 14, y, need, opp.wins, COLORS[opp.spawn], 'right', '');
 
   // Countdown / round banner.
@@ -430,10 +447,10 @@ function drawHud(s) {
     ctx.fillRect(wx(0), wy(0), ws(state.cfg.arena.w), ws(state.cfg.arena.h));
     ctx.fillStyle = '#ffd76a';
     ctx.font = '800 90px system-ui, sans-serif';
-    ctx.fillText(s.count > 0 ? String(s.count) : 'GO', cx, cy);
+    ctx.fillText(s.count > 0 ? String(s.count) : 'LOS!', cx, cy);
     ctx.fillStyle = '#fdf4ff';
     ctx.font = '700 22px system-ui, sans-serif';
-    ctx.fillText(`Round ${s.round}`, cx, cy - 90);
+    ctx.fillText(`Runde ${s.round}`, cx, cy - 90);
   }
 }
 
@@ -488,11 +505,11 @@ function renderGameOver(msg) {
   clearInterval(state.inputTimer);
   sticks.move = sticks.aim = null;
   if (msg.youWon) {
-    $('#won-text').innerHTML = `You won the duel, <b>${escapeHtml(msg.winner.name)}</b>! 🏆<br />Now sit tight — <b>${escapeHtml(msg.loser.name)}</b> owes you a very important question…`;
+    $('#won-text').innerHTML = `Du hast das Duell gewonnen, <b>${escapeHtml(msg.winner.name)}</b>! 🏆<br />Lehn dich zurück — <b>${escapeHtml(msg.loser.name)}</b> schuldet dir eine sehr wichtige Frage…`;
     show('screen-won');
     launchConfetti(2500);
   } else {
-    $('#lost-text').innerHTML = `You got outgunned, <b>${escapeHtml(msg.loser.name)}</b>! 😅<br />You know what that means. Time to propose to <b>${escapeHtml(msg.winner.name)}</b>.`;
+    $('#lost-text').innerHTML = `Du wurdest besiegt, <b>${escapeHtml(msg.loser.name)}</b>! 😅<br />Du weißt, was das bedeutet. Zeit, <b>${escapeHtml(msg.winner.name)}</b> einen Antrag zu machen.`;
     $('#proposal-script').textContent = pickScript(msg.winner.name);
     $('#btn-propose').classList.remove('hidden');
     $('#lost-waiting').classList.add('hidden');
@@ -501,12 +518,12 @@ function renderGameOver(msg) {
 }
 
 const SCRIPTS = [
-  (name) => `${name}, you beat me fair and square out there — but the truth is I surrendered my heart to you long ago. Will you marry me?`,
-  (name) => `I'd lose every duel for the rest of my life if it meant being on your team forever. ${name}, will you marry me?`,
-  (name) => `Well, ${name}, you win — and honestly, so do I, every single day I'm with you. Will you marry me?`,
+  (name) => `${name}, du hast mich fair und ehrlich besiegt — aber die Wahrheit ist: Mein Herz gehört dir schon lange. Willst du mich heiraten?`,
+  (name) => `Ich würde jedes Duell für den Rest meines Lebens verlieren, wenn ich dafür für immer an deiner Seite sein darf. ${name}, willst du mich heiraten?`,
+  (name) => `Nun, ${name}, du gewinnst — und ehrlich gesagt gewinne ich auch, jeden einzelnen Tag mit dir. Willst du mich heiraten?`,
 ];
 function pickScript(name) {
-  return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](name || 'my love');
+  return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](name || 'mein Schatz');
 }
 
 // --- Proposal + celebration -------------------------------------------------
@@ -517,7 +534,7 @@ function renderProposalMade(msg) {
   }
 }
 function renderCelebration() {
-  $('#celebrate-sub').textContent = 'Here comes forever 🥂💍';
+  $('#celebrate-sub').textContent = 'Auf die Ewigkeit 🥂💍';
   show('screen-celebrate');
   spawnHearts();
   launchConfetti(6000);

@@ -1,0 +1,18 @@
+[Unit]
+Description=Das Liebes-Duell game server
+After=network.target
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory to where you cloned the repo on the server.
+WorkingDirectory=/opt/theonlinegame
+ExecStart=/usr/bin/node server.js
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Restart=on-failure
+RestartSec=3
+User=theonlinegame
+Group=theonlinegame
+
+[Install]
+WantedBy=multi-user.target

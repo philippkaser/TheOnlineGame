@@ -1,89 +1,89 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#1a0f2e" />
-  <title>The Love Duel 💘🔫</title>
+  <title>Das Liebes-Duell 💘</title>
   <link rel="stylesheet" href="/style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💘</text></svg>" />
 </head>
 <body>
   <div id="app">
 
-    <!-- HOME -->
+    <!-- START -->
     <section class="screen active" id="screen-home">
       <div class="hero">
         <div class="ring-emoji">💘</div>
-        <h1>The Love Duel</h1>
-        <p class="tagline">Two phones. One arena.<br />Outshoot your love — the loser proposes. 💍</p>
+        <h1>Das Liebes-Duell</h1>
+        <p class="tagline">Zwei Handys. Eine Arena.<br />Beschieße deine Liebe mit Herzen – wer verliert, macht einen Antrag. 💍</p>
       </div>
       <div class="home-actions">
-        <input id="name-input" class="text-input" type="text" maxlength="20" placeholder="Your name" autocomplete="off" />
-        <button class="btn btn-primary" id="btn-create">Create a duel</button>
-        <div class="divider"><span>or</span></div>
-        <input id="code-input" class="text-input code-field" type="text" maxlength="4" placeholder="ROOM CODE" autocomplete="off" autocapitalize="characters" />
-        <button class="btn btn-secondary" id="btn-join">Join a duel</button>
+        <input id="name-input" class="text-input" type="text" maxlength="20" placeholder="Dein Name" autocomplete="off" />
+        <button class="btn btn-primary" id="btn-create">Duell erstellen</button>
+        <div class="divider"><span>oder</span></div>
+        <input id="code-input" class="text-input code-field" type="text" maxlength="4" placeholder="RAUMCODE" autocomplete="off" autocapitalize="characters" />
+        <button class="btn btn-secondary" id="btn-join">Duell beitreten</button>
       </div>
       <p class="error-text" id="home-error"></p>
     </section>
 
-    <!-- LOBBY -->
+    <!-- WARTERAUM -->
     <section class="screen" id="screen-lobby">
-      <h2 class="lobby-title">Waiting room</h2>
+      <h2 class="lobby-title">Warteraum</h2>
       <div class="code-card">
-        <span class="code-label">Room code</span>
+        <span class="code-label">Raumcode</span>
         <span class="code-big" id="lobby-code">----</span>
-        <span class="code-hint">Have your partner enter this on their phone</span>
+        <span class="code-hint">Gib diesen Code auf dem Handy deines Partners ein</span>
       </div>
       <ul class="player-list" id="player-list"></ul>
-      <p class="lobby-status" id="lobby-status">Waiting for your partner to join…</p>
-      <button class="btn btn-primary" id="btn-start" disabled>Start the duel</button>
-      <p class="how-to">Best of 3 rounds. Left thumb moves, right thumb aims &amp; fires. 🔫</p>
+      <p class="lobby-status" id="lobby-status">Warte auf deinen Partner…</p>
+      <button class="btn btn-primary" id="btn-start" disabled>Duell starten</button>
+      <p class="how-to">Best of 3 Runden. Linker Daumen bewegt, rechter Daumen zielt &amp; schießt Herzen. 💘</p>
     </section>
 
-    <!-- GAME -->
+    <!-- SPIEL -->
     <section class="screen no-pad" id="screen-game">
       <canvas id="game-canvas"></canvas>
     </section>
 
-    <!-- GAME OVER / LOSER -->
+    <!-- VERLOREN -->
     <section class="screen" id="screen-lost">
-      <div class="verdict-emoji">💥</div>
-      <h2 class="verdict-title">The smoke clears…</h2>
+      <div class="verdict-emoji">💔</div>
+      <h2 class="verdict-title">Der Rauch verzieht sich…</h2>
       <p class="verdict-text" id="lost-text"></p>
       <div class="proposal-script">
-        <p class="script-label">Here's an idea if you need one 💬</p>
+        <p class="script-label">Hier ist eine Idee, falls du eine brauchst 💬</p>
         <p class="script-body" id="proposal-script"></p>
       </div>
-      <button class="btn btn-propose" id="btn-propose">Get down on one knee 💍</button>
-      <p class="proposal-waiting hidden" id="lost-waiting">You popped the question…<br />waiting for their answer 🥹</p>
+      <button class="btn btn-propose" id="btn-propose">Geh auf ein Knie 💍</button>
+      <p class="proposal-waiting hidden" id="lost-waiting">Du hast die Frage gestellt…<br />warte auf die Antwort 🥹</p>
     </section>
 
-    <!-- GAME OVER / WINNER -->
+    <!-- GEWONNEN -->
     <section class="screen" id="screen-won">
       <div class="verdict-emoji">🏆</div>
-      <h2 class="verdict-title">Last one standing!</h2>
+      <h2 class="verdict-title">Als Letzte(r) übrig!</h2>
       <p class="verdict-text" id="won-text"></p>
-      <p class="won-waiting" id="won-waiting">Any second now… 👀</p>
+      <p class="won-waiting" id="won-waiting">Gleich ist es soweit… 👀</p>
     </section>
 
-    <!-- PROPOSAL POPUP (winner sees the big question) -->
+    <!-- ANTRAG (Gewinner sieht die große Frage) -->
     <section class="screen proposal-stage" id="screen-proposal">
       <div class="big-ring">💍</div>
-      <h2 class="proposal-question" id="proposal-question">Will you marry me?</h2>
-      <button class="btn btn-yes" id="btn-yes">YES! 🥰</button>
-      <p class="proposal-sub">(there's really only one right answer here)</p>
+      <h2 class="proposal-question" id="proposal-question">Willst du mich heiraten?</h2>
+      <button class="btn btn-yes" id="btn-yes">JA! 🥰</button>
+      <p class="proposal-sub">(es gibt hier wirklich nur eine richtige Antwort)</p>
     </section>
 
-    <!-- CELEBRATION -->
+    <!-- FEIER -->
     <section class="screen celebrate" id="screen-celebrate">
       <div class="celebrate-inner">
         <div class="big-ring pulse">💍</div>
-        <h1 class="celebrate-title">THEY SAID YES!</h1>
-        <p class="celebrate-sub" id="celebrate-sub">Congratulations 🥂</p>
+        <h1 class="celebrate-title">JA GESAGT!</h1>
+        <p class="celebrate-sub" id="celebrate-sub">Herzlichen Glückwunsch 🥂</p>
       </div>
-      <button class="btn btn-secondary btn-again" id="btn-again">Play again</button>
+      <button class="btn btn-secondary btn-again" id="btn-again">Nochmal spielen</button>
     </section>
 
   </div>

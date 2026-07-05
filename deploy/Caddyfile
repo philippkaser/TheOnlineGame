@@ -1,0 +1,13 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# HTTPS is required so phones on mobile data can use the secure wss:// socket.
+#
+# Replace duell.example.com with your own domain (an A record must point at
+# your Hetzner server's IP). Then: caddy run --config /etc/caddy/Caddyfile
+#
+# Caddy forwards WebSocket upgrade headers automatically — no extra config
+# needed for the live game socket.
+
+duell.example.com {
+    encode gzip
+    reverse_proxy localhost:3000
+}

@@ -400,7 +400,7 @@ function handleMessage(ws, msg) {
   switch (msg.type) {
     case 'create': {
       const room = makeRoom();
-      const p = { id: genId(), ws, name: (msg.name || 'Player 1').slice(0, 20), connected: true };
+      const p = { id: genId(), ws, name: (msg.name || 'Spieler 1').slice(0, 20), connected: true };
       room.players.push(p);
       ws.roomCode = room.code;
       ws.playerId = p.id;
@@ -413,12 +413,12 @@ function handleMessage(ws, msg) {
       const code = (msg.code || '').toUpperCase().trim();
       const room = rooms.get(code);
       if (!room) {
-        send(ws, { type: 'error', message: "That room code doesn't exist. Check the letters?" });
+        send(ws, { type: 'error', message: 'Diesen Raumcode gibt es nicht. Stimmen die Buchstaben?' });
         return;
       }
       const dropped = room.players.find((p) => !p.connected);
       if (room.players.length >= 2 && !dropped) {
-        send(ws, { type: 'error', message: 'That room is already full.' });
+        send(ws, { type: 'error', message: 'Dieser Raum ist schon voll.' });
         return;
       }
       let p;
@@ -428,7 +428,7 @@ function handleMessage(ws, msg) {
         p.ws = ws;
         if (msg.name) p.name = msg.name.slice(0, 20);
       } else {
-        p = { id: genId(), ws, name: (msg.name || 'Player 2').slice(0, 20), connected: true };
+        p = { id: genId(), ws, name: (msg.name || 'Spieler 2').slice(0, 20), connected: true };
         room.players.push(p);
       }
       ws.roomCode = room.code;
@@ -494,5 +494,5 @@ function clampNum(n) {
 }
 
 server.listen(PORT, () => {
-  console.log(`🔫  The Love Duel (shooter) running at http://localhost:${PORT}`);
+  console.log(`💘  Das Liebes-Duell läuft auf http://localhost:${PORT}`);
 });
