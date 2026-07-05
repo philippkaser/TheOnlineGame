@@ -1,16 +1,22 @@
 // ---------------------------------------------------------------------------
-//  The Love Duel — client
+//  The Love Duel — top-down shooter client
 // ---------------------------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+const COLORS = ['#ff5c8a', '#5ab8ff']; // player index 0 / 1
 
 const state = {
   ws: null,
   playerId: null,
   isHost: false,
   code: null,
-  answered: false,
-  timerRaf: null,
+  cfg: null, // gameStart config
+  latest: null, // most recent server state
+  render: {}, // smoothed positions per player id
+  input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false },
+  inputTimer: null,
+  raf: null,
 };
 
 // --- Screen management ------------------------------------------------------
@@ -27,23 +33,15 @@ function connect(onOpen) {
   ws.addEventListener('open', () => onOpen && onOpen());
   ws.addEventListener('message', (e) => handleMessage(JSON.parse(e.data)));
   ws.addEventListener('close', () => {
-    // Try to reconnect and rejoin the same room silently.
-    if (state.code) {
-      setTimeout(() => connect(() => rejoin()), 1200);
-    }
+    if (state.code) setTimeout(() => connect(() => rejoin()), 1200);
   });
 }
-
 function sendMsg(obj) {
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    state.ws.send(JSON.stringify(obj));
-  }
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(obj));
 }
-
 function rejoin() {
   sendMsg({ type: 'join', code: state.code, name: getName() });
 }
-
 function getName() {
   return ($('#name-input').value || '').trim();
 }
@@ -53,7 +51,6 @@ $('#btn-create').addEventListener('click', () => {
   $('#home-error').textContent = '';
   connect(() => sendMsg({ type: 'create', name: getName() || 'Player 1' }));
 });
-
 $('#btn-join').addEventListener('click', () => {
   const code = ($('#code-input').value || '').toUpperCase().trim();
   if (code.length !== 4) {
@@ -64,11 +61,7 @@ $('#btn-join').addEventListener('click', () => {
   state.code = code;
   connect(() => sendMsg({ type: 'join', code, name: getName() || 'Player 2' }));
 });
-
-$('#code-input').addEventListener('input', (e) => {
-  e.target.value = e.target.value.toUpperCase();
-});
-
+$('#code-input').addEventListener('input', (e) => (e.target.value = e.target.value.toUpperCase()));
 $('#btn-start').addEventListener('click', () => sendMsg({ type: 'start' }));
 $('#btn-propose').addEventListener('click', () => {
   sendMsg({ type: 'propose' });
@@ -76,9 +69,7 @@ $('#btn-propose').addEventListener('click', () => {
   $('#lost-waiting').classList.remove('hidden');
 });
 $('#btn-yes').addEventListener('click', () => sendMsg({ type: 'accept' }));
-$('#btn-again').addEventListener('click', () => {
-  sendMsg({ type: 'playAgain' });
-});
+$('#btn-again').addEventListener('click', () => sendMsg({ type: 'playAgain' }));
 
 // --- Message handling -------------------------------------------------------
 function handleMessage(msg) {
@@ -88,43 +79,26 @@ function handleMessage(msg) {
       state.isHost = msg.isHost;
       state.code = msg.code;
       break;
-
     case 'lobby':
       renderLobby(msg);
       show('screen-lobby');
       break;
-
     case 'error':
       $('#home-error').textContent = msg.message;
       state.code = null;
       break;
-
     case 'gameStart':
-      stopConfetti();
+      startGame(msg);
       break;
-
-    case 'question':
-      renderQuestion(msg);
+    case 'state':
+      state.latest = msg;
       break;
-
-    case 'answered':
-      if (msg.playerId !== state.playerId) {
-        $('#q-wait').textContent = 'Your partner has answered…';
-      }
-      break;
-
-    case 'questionResult':
-      renderResult(msg);
-      break;
-
     case 'gameOver':
       renderGameOver(msg);
       break;
-
     case 'proposalMade':
       renderProposalMade(msg);
       break;
-
     case 'proposalAccepted':
       renderCelebration();
       break;
@@ -148,7 +122,6 @@ function renderLobby(msg) {
     li.innerHTML = `<span class="dot"></span><span>Waiting for partner…</span>`;
     list.appendChild(li);
   }
-
   const ready = msg.players.length === 2 && msg.players.every((p) => p.connected);
   const startBtn = $('#btn-start');
   if (state.isHost) {
@@ -161,115 +134,365 @@ function renderLobby(msg) {
   }
 }
 
-// --- Question ---------------------------------------------------------------
-function renderQuestion(msg) {
-  state.answered = false;
-  $('#q-counter').textContent = msg.tieBreak ? '⚡ Sudden death!' : `Question ${msg.round} of ${msg.total}`;
-  $('#q-text').textContent = msg.text;
-  $('#q-wait').textContent = '';
+// ---------------------------------------------------------------------------
+//  Game
+// ---------------------------------------------------------------------------
+const canvas = $('#game-canvas');
+const ctx = canvas.getContext('2d');
+let view = { scale: 1, ox: 0, oy: 0, cssW: 0, cssH: 0 };
 
-  const box = $('#choices');
-  box.innerHTML = '';
-  msg.choices.forEach((choice, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'choice';
-    btn.textContent = choice;
-    btn.dataset.index = i;
-    btn.addEventListener('click', () => selectChoice(i, btn));
-    box.appendChild(btn);
-  });
-
-  startTimer(msg.timeMs);
-  show('screen-question');
+function startGame(cfg) {
+  state.cfg = cfg;
+  state.latest = null;
+  state.render = {};
+  stopConfetti();
+  show('screen-game');
+  resizeCanvas();
+  bindControls();
+  startInputLoop();
+  if (!state.raf) loop();
 }
 
-function selectChoice(index, btn) {
-  if (state.answered) return;
-  state.answered = true;
-  $$('.choice').forEach((c) => {
-    c.disabled = true;
-    if (c === btn) c.classList.add('selected');
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  view.cssW = rect.width;
+  view.cssH = rect.height;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { w, h } = state.cfg.arena;
+  view.scale = Math.min(view.cssW / w, view.cssH / h);
+  view.ox = (view.cssW - w * view.scale) / 2;
+  view.oy = (view.cssH - h * view.scale) / 2;
+}
+window.addEventListener('resize', () => {
+  if (state.cfg && $('#screen-game').classList.contains('active')) resizeCanvas();
+});
+
+const wx = (x) => view.ox + x * view.scale;
+const wy = (y) => view.oy + y * view.scale;
+const ws = (s) => s * view.scale;
+
+// --- Input: twin-stick touch + keyboard/mouse ------------------------------
+const sticks = { move: null, aim: null }; // { id, ox, oy, x, y }
+const STICK_R = 55;
+const keys = {};
+let mouse = { active: false, x: 0, y: 0, down: false };
+
+function bindControls() {
+  if (canvas.dataset.bound) return;
+  canvas.dataset.bound = '1';
+
+  canvas.addEventListener('touchstart', onTouch, { passive: false });
+  canvas.addEventListener('touchmove', onTouch, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+  // Desktop fallback.
+  window.addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true));
+  window.addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    mouse.active = true;
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
   });
-  $('#q-wait').textContent = 'Locked in! Waiting for your partner…';
-  sendMsg({ type: 'answer', choice: index });
+  canvas.addEventListener('mousedown', () => (mouse.down = true));
+  window.addEventListener('mouseup', () => (mouse.down = false));
 }
 
-function startTimer(ms) {
-  cancelAnimationFrame(state.timerRaf);
-  const fill = $('#q-timer-fill');
-  const start = performance.now();
-  const tick = (now) => {
-    const remaining = Math.max(0, 1 - (now - start) / ms);
-    fill.style.width = remaining * 100 + '%';
-    if (remaining > 0) {
-      state.timerRaf = requestAnimationFrame(tick);
-    } else if (!state.answered) {
-      state.answered = true;
-      $$('.choice').forEach((c) => (c.disabled = true));
-      $('#q-wait').textContent = "Time's up!";
+function onTouch(e) {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  for (const t of Array.from(e.changedTouches)) {
+    const x = t.clientX - r.left;
+    const y = t.clientY - r.top;
+    // Assign a new touch to a half if that stick is free.
+    const side = x < view.cssW / 2 ? 'move' : 'aim';
+    if (!sticks[side] || sticks[side].id === t.identifier) {
+      if (!sticks[side]) sticks[side] = { id: t.identifier, ox: x, oy: y, x, y };
+      else {
+        sticks[side].x = x;
+        sticks[side].y = y;
+      }
     }
-  };
-  state.timerRaf = requestAnimationFrame(tick);
-}
-
-// --- Round result -----------------------------------------------------------
-function renderResult(msg) {
-  cancelAnimationFrame(state.timerRaf);
-  const me = msg.results.find((r) => r.playerId === state.playerId);
-  const gotIt = me && me.correct;
-
-  $('#result-badge').textContent = gotIt ? '✅' : '❌';
-  $('#result-headline').textContent = gotIt ? 'Nailed it!' : 'Not quite!';
-
-  // Highlight the correct choice on the question screen too (nice touch if they linger).
-  $$('.choice').forEach((c) => {
-    const idx = Number(c.dataset.index);
-    if (idx === msg.correctIndex) c.classList.add('correct');
-    else if (me && idx === me.choice) c.classList.add('wrong');
-  });
-
-  const other = msg.results.find((r) => r.playerId !== state.playerId);
-  let sub = '';
-  if (other) {
-    sub = other.correct ? `${escapeHtml(other.name)} got it too!` : `${escapeHtml(other.name)} missed this one.`;
   }
-  $('#result-correct').innerHTML = sub;
-
-  renderScoreboard('#scoreboard', msg.scores);
-  show('screen-result');
+  // Update existing sticks that moved.
+  for (const t of Array.from(e.touches)) {
+    for (const side of ['move', 'aim']) {
+      if (sticks[side] && sticks[side].id === t.identifier) {
+        sticks[side].x = t.clientX - r.left;
+        sticks[side].y = t.clientY - r.top;
+      }
+    }
+  }
+}
+function onTouchEnd(e) {
+  e.preventDefault();
+  for (const t of Array.from(e.changedTouches)) {
+    for (const side of ['move', 'aim']) {
+      if (sticks[side] && sticks[side].id === t.identifier) sticks[side] = null;
+    }
+  }
 }
 
-function renderScoreboard(sel, players) {
-  const box = $(sel);
-  box.innerHTML = '';
-  const max = Math.max(...players.map((p) => p.score));
-  players
-    .slice()
-    .sort((a, b) => b.score - a.score)
-    .forEach((p) => {
-      const row = document.createElement('div');
-      row.className = 'score-row' + (p.score === max && max > 0 ? ' leading' : '');
-      row.innerHTML = `<span class="s-name">${escapeHtml(p.name)}${p.id === state.playerId ? ' (you)' : ''}</span><span class="s-val">${p.score}</span>`;
-      box.appendChild(row);
-    });
+function computeInput() {
+  const inp = { mx: 0, my: 0, ax: 0, ay: 0, firing: false };
+
+  if (sticks.move) {
+    let dx = sticks.move.x - sticks.move.ox;
+    let dy = sticks.move.y - sticks.move.oy;
+    const m = Math.hypot(dx, dy) || 1;
+    const clamped = Math.min(m, STICK_R) / STICK_R;
+    inp.mx = (dx / m) * clamped;
+    inp.my = (dy / m) * clamped;
+  }
+  if (sticks.aim) {
+    const dx = sticks.aim.x - sticks.aim.ox;
+    const dy = sticks.aim.y - sticks.aim.oy;
+    const m = Math.hypot(dx, dy);
+    if (m > STICK_R * 0.25) {
+      inp.ax = dx / m;
+      inp.ay = dy / m;
+      inp.firing = true;
+    }
+  }
+
+  // Keyboard movement.
+  let kx = 0;
+  let ky = 0;
+  if (keys['a'] || keys['arrowleft']) kx -= 1;
+  if (keys['d'] || keys['arrowright']) kx += 1;
+  if (keys['w'] || keys['arrowup']) ky -= 1;
+  if (keys['s'] || keys['arrowdown']) ky += 1;
+  if (kx || ky) {
+    const m = Math.hypot(kx, ky);
+    inp.mx = kx / m;
+    inp.my = ky / m;
+  }
+  // Mouse aim.
+  const me = state.latest && state.latest.players.find((p) => p.id === state.playerId);
+  if (mouse.active && me) {
+    const dx = mouse.x - wx(me.x);
+    const dy = mouse.y - wy(me.y);
+    const m = Math.hypot(dx, dy);
+    if (m > 4) {
+      inp.ax = dx / m;
+      inp.ay = dy / m;
+      if (mouse.down || keys[' ']) inp.firing = true;
+    }
+  }
+  return inp;
+}
+
+function startInputLoop() {
+  clearInterval(state.inputTimer);
+  state.inputTimer = setInterval(() => {
+    if (!$('#screen-game').classList.contains('active')) return;
+    const inp = computeInput();
+    state.input = inp;
+    sendMsg({ type: 'input', ...inp });
+  }, 50);
+}
+
+// --- Render loop ------------------------------------------------------------
+function loop() {
+  state.raf = requestAnimationFrame(loop);
+  if (!state.cfg || !$('#screen-game').classList.contains('active')) return;
+  draw();
+}
+
+function draw() {
+  const { w, h } = state.cfg.arena;
+  ctx.clearRect(0, 0, view.cssW, view.cssH);
+
+  // Arena floor.
+  ctx.fillStyle = '#160c28';
+  ctx.fillRect(wx(0), wy(0), ws(w), ws(h));
+  // Grid.
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx <= w; gx += 60) {
+    ctx.beginPath();
+    ctx.moveTo(wx(gx), wy(0));
+    ctx.lineTo(wx(gx), wy(h));
+    ctx.stroke();
+  }
+  for (let gy = 0; gy <= h; gy += 60) {
+    ctx.beginPath();
+    ctx.moveTo(wx(0), wy(gy));
+    ctx.lineTo(wx(w), wy(gy));
+    ctx.stroke();
+  }
+  // Arena border.
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(wx(0), wy(0), ws(w), ws(h));
+
+  // Obstacles.
+  ctx.fillStyle = '#3a2560';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  for (const o of state.cfg.obstacles) {
+    ctx.fillRect(wx(o.x), wy(o.y), ws(o.w), ws(o.h));
+    ctx.strokeRect(wx(o.x), wy(o.y), ws(o.w), ws(o.h));
+  }
+
+  const s = state.latest;
+  if (s) {
+    // Bullets.
+    for (const b of s.bullets) {
+      ctx.beginPath();
+      ctx.fillStyle = COLORS[b[2]] || '#fff';
+      ctx.arc(wx(b[0]), wy(b[1]), ws(state.cfg.bulletR), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Players (smoothed).
+    for (const p of s.players) {
+      const r = (state.render[p.id] = state.render[p.id] || { x: p.x, y: p.y, angle: p.angle });
+      r.x += (p.x - r.x) * 0.35;
+      r.y += (p.y - r.y) * 0.35;
+      r.angle = p.angle;
+      drawPlayer(p, r);
+    }
+    drawHud(s);
+  }
+
+  drawSticks();
+}
+
+function drawPlayer(p, r) {
+  const cx = wx(r.x);
+  const cy = wy(r.y);
+  const rad = ws(state.cfg.playerR);
+  const color = COLORS[p.spawn];
+  const dead = p.hp <= 0;
+
+  ctx.globalAlpha = dead ? 0.3 : 1;
+
+  // Body.
+  ctx.beginPath();
+  ctx.fillStyle = color;
+  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Barrel.
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = ws(6);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(r.angle) * rad * 1.5, cy + Math.sin(r.angle) * rad * 1.5);
+  ctx.stroke();
+
+  // "You" ring.
+  if (p.id === state.playerId) {
+    ctx.strokeStyle = '#ffd76a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Health bar.
+  const bw = rad * 2.4;
+  const bh = 6;
+  const bx = cx - bw / 2;
+  const by = cy - rad - 16;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = p.hp > 40 ? '#4ade80' : '#fb7185';
+  ctx.fillRect(bx, by, (bw * p.hp) / state.cfg.maxHp, bh);
+}
+
+function drawHud(s) {
+  // Round-win pips, colour-coded, "you" marked.
+  const need = state.cfg.roundsToWin;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const meFirst = s.players.find((p) => p.id === state.playerId)?.spawn === 0;
+  const ordered = meFirst ? s.players : [...s.players].reverse();
+
+  ctx.font = '600 14px system-ui, sans-serif';
+  let y = view.oy + 18;
+  // Left = you.
+  const you = ordered[0];
+  const opp = ordered[1];
+  drawPips(view.ox + 14, y, need, you.wins, COLORS[you.spawn], 'left', you.id === state.playerId ? 'YOU' : '');
+  drawPips(view.ox + ws(state.cfg.arena.w) - 14, y, need, opp.wins, COLORS[opp.spawn], 'right', '');
+
+  // Countdown / round banner.
+  if (s.phase === 'countdown') {
+    const cx = view.ox + ws(state.cfg.arena.w) / 2;
+    const cy = view.oy + ws(state.cfg.arena.h) / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(wx(0), wy(0), ws(state.cfg.arena.w), ws(state.cfg.arena.h));
+    ctx.fillStyle = '#ffd76a';
+    ctx.font = '800 90px system-ui, sans-serif';
+    ctx.fillText(s.count > 0 ? String(s.count) : 'GO', cx, cy);
+    ctx.fillStyle = '#fdf4ff';
+    ctx.font = '700 22px system-ui, sans-serif';
+    ctx.fillText(`Round ${s.round}`, cx, cy - 90);
+  }
+}
+
+function drawPips(x, y, need, wins, color, align, label) {
+  const gap = 20;
+  for (let i = 0; i < need; i++) {
+    const px = align === 'left' ? x + 8 + i * gap : x - 8 - i * gap;
+    ctx.beginPath();
+    ctx.arc(px, y, 7, 0, Math.PI * 2);
+    if (i < wins) {
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+  if (label) {
+    ctx.fillStyle = '#ffd76a';
+    ctx.font = '700 11px system-ui, sans-serif';
+    ctx.textAlign = align;
+    ctx.fillText(label, align === 'left' ? x : x, y + 18);
+    ctx.textAlign = 'center';
+  }
+}
+
+function drawSticks() {
+  for (const side of ['move', 'aim']) {
+    const st = sticks[side];
+    if (!st) continue;
+    const kx = st.x - st.ox;
+    const ky = st.y - st.oy;
+    const m = Math.hypot(kx, ky) || 1;
+    const c = Math.min(m, STICK_R);
+    const nx = st.ox + (kx / m) * c;
+    const ny = st.oy + (ky / m) * c;
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 3;
+    ctx.arc(st.ox, st.oy, STICK_R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.fillStyle = side === 'aim' ? 'rgba(255,92,138,0.75)' : 'rgba(255,255,255,0.55)';
+    ctx.arc(nx, ny, 26, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // --- Game over --------------------------------------------------------------
 function renderGameOver(msg) {
-  cancelAnimationFrame(state.timerRaf);
-  const scores = [
-    { id: msg.winner.id, name: msg.winner.name, score: msg.winner.score },
-    { id: msg.loser.id, name: msg.loser.name, score: msg.loser.score },
-  ];
-
+  clearInterval(state.inputTimer);
+  sticks.move = sticks.aim = null;
   if (msg.youWon) {
-    renderScoreboard('#won-scoreboard', scores);
-    $('#won-text').innerHTML = `You won, <b>${escapeHtml(msg.winner.name)}</b>! 👑<br />Now sit tight — <b>${escapeHtml(msg.loser.name)}</b> owes you a very important question…`;
+    $('#won-text').innerHTML = `You won the duel, <b>${escapeHtml(msg.winner.name)}</b>! 🏆<br />Now sit tight — <b>${escapeHtml(msg.loser.name)}</b> owes you a very important question…`;
     show('screen-won');
     launchConfetti(2500);
   } else {
-    renderScoreboard('#lost-scoreboard', scores);
-    $('#lost-text').innerHTML = `Ohh, <b>${escapeHtml(msg.loser.name)}</b>… you lost! 😅<br />You know what that means. Time to propose to <b>${escapeHtml(msg.winner.name)}</b>.`;
+    $('#lost-text').innerHTML = `You got outgunned, <b>${escapeHtml(msg.loser.name)}</b>! 😅<br />You know what that means. Time to propose to <b>${escapeHtml(msg.winner.name)}</b>.`;
     $('#proposal-script').textContent = pickScript(msg.winner.name);
     $('#btn-propose').classList.remove('hidden');
     $('#lost-waiting').classList.add('hidden');
@@ -278,25 +501,21 @@ function renderGameOver(msg) {
 }
 
 const SCRIPTS = [
-  (name) => `${name}, from the moment we met, life got brighter. I lost this game, but I don't want to lose you — ever. Will you marry me?`,
-  (name) => `${name}, I'd fail a thousand quizzes if it meant spending forever with you. So here goes… will you marry me?`,
-  (name) => `Well, ${name}, the game has spoken — and honestly, so has my heart. Will you be mine forever? Will you marry me?`,
+  (name) => `${name}, you beat me fair and square out there — but the truth is I surrendered my heart to you long ago. Will you marry me?`,
+  (name) => `I'd lose every duel for the rest of my life if it meant being on your team forever. ${name}, will you marry me?`,
+  (name) => `Well, ${name}, you win — and honestly, so do I, every single day I'm with you. Will you marry me?`,
 ];
-
 function pickScript(name) {
-  return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](escapeText(name));
+  return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](name || 'my love');
 }
 
-// --- Proposal ---------------------------------------------------------------
+// --- Proposal + celebration -------------------------------------------------
 function renderProposalMade(msg) {
-  const amWinner = msg.proposee === state.playerId;
-  if (amWinner) {
+  if (msg.proposee === state.playerId) {
     launchConfetti(1500);
     show('screen-proposal');
   }
-  // The proposer already switched to their "waiting" view when they tapped.
 }
-
 function renderCelebration() {
   $('#celebrate-sub').textContent = 'Here comes forever 🥂💍';
   show('screen-celebrate');
@@ -328,15 +547,11 @@ function launchConfetti(durationMs) {
     }
   }, 120);
 }
-
 function stopConfetti() {
   clearInterval(confettiTimer);
   $('#confetti').innerHTML = '';
 }
-
 function spawnHearts() {
-  const box = $('#hearts');
-  box.innerHTML = '';
   const emojis = ['❤️', '💕', '💗', '💖', '💘'];
   for (let i = 0; i < 18; i++) {
     const h = document.createElement('div');
@@ -346,6 +561,7 @@ function spawnHearts() {
     h.style.bottom = '-40px';
     h.style.fontSize = 1 + Math.random() * 1.5 + 'rem';
     h.style.pointerEvents = 'none';
+    h.style.zIndex = 60;
     h.style.animation = `fall ${3 + Math.random() * 3}s linear forwards`;
     h.style.transform = 'rotate(180deg)';
     document.body.appendChild(h);
@@ -358,7 +574,4 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str == null ? '' : String(str);
   return div.innerHTML;
-}
-function escapeText(str) {
-  return str == null ? '' : String(str);
 }
