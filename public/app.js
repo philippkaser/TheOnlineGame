@@ -4,8 +4,11 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-const COLORS = ['#ff5c8a', '#5ab8ff']; // player spawn 0 / 1
-const COLORS_SOFT = ['rgba(255,92,138,', 'rgba(90,184,255,'];
+const COLORS = ['#ff4fa3', '#4fd4ff']; // player spawn 0 / 1
+const COLORS_SOFT = ['rgba(255,79,163,', 'rgba(79,212,255,'];
+const OUTLINE = '#3a1030'; // sticker outline for the flat kawaii look
+// Kawaii / menhera palette (flat, saturated — Needy-Streamer vibe).
+const KW = { bg: '#ffcdeb', dot: 'rgba(255,120,196,0.55)', frame: '#ff2f92', obFill: '#c98cff', obTop: '#e3c4ff' };
 
 const POWERUPS = {
   heal: { emoji: '💚', ring: '#4ade80', label: 'Heilung' },
@@ -117,8 +120,10 @@ $('#btn-propose').addEventListener('click', () => {
 $('#btn-yes').addEventListener('click', () => sendMsg({ type: 'accept' }));
 $('#btn-again').addEventListener('click', () => sendMsg({ type: 'playAgain' }));
 
-// Emote bar — blow your partner a kiss mid-duel.
+// Emote bar — blow your partner a kiss mid-duel. Emotes pop as a cute
+// sticker speech-bubble above the sender's fighter (drawn on the canvas).
 const EMOTE_GLYPH = { kiss: '💋', heart: '❤️', wink: '😘', rose: '🌹' };
+const activeEmotes = {}; // playerId -> { glyph, born }
 $$('.emote-btn').forEach((b) => {
   b.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -126,17 +131,7 @@ $$('.emote-btn').forEach((b) => {
   });
 });
 function showEmote(msg) {
-  const mine = msg.from === state.playerId;
-  const glyph = EMOTE_GLYPH[msg.kind] || '❤️';
-  const el = document.createElement('div');
-  el.className = 'emote-fly';
-  el.textContent = glyph;
-  el.style.left = 8 + Math.random() * 74 + 'vw';
-  // Yours rise from the bottom, your partner's drift from the top.
-  el.style.setProperty('--from', mine ? '100vh' : '-12vh');
-  el.style.setProperty('--to', mine ? '-12vh' : '100vh');
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  activeEmotes[msg.from] = { glyph: EMOTE_GLYPH[msg.kind] || '❤️', born: performance.now() };
 }
 
 // --- Messages ---------------------------------------------------------------
@@ -594,117 +589,76 @@ function playerRenderPos(p) {
 let backdrop = [];
 function buildBackdrop() {
   backdrop = [];
-  for (let i = 0; i < 60; i++) {
+  const kinds = ['heart', 'star', 'sparkle'];
+  for (let i = 0; i < 22; i++) {
     backdrop.push({
       x: Math.random(),
       y: Math.random(),
-      s: 0.5 + Math.random() * 1.4,
+      s: 8 + Math.random() * 10,
       ph: Math.random() * Math.PI * 2,
-      tw: 1.5 + Math.random() * 2.5, // twinkle speed
+      kind: kinds[Math.floor(Math.random() * kinds.length)],
     });
   }
 }
 
-function drawMoon(t) {
-  const { w, h } = state.cfg.arena;
-  const mx = wx(w * 0.76);
-  const my = wy(h * 0.15);
-  const rad = wsc(46);
-  ctx.save();
-  // Soft glow.
-  const glow = ctx.createRadialGradient(mx, my, rad * 0.4, mx, my, rad * 2.2);
-  glow.addColorStop(0, 'rgba(255,246,214,0.35)');
-  glow.addColorStop(1, 'rgba(255,246,214,0)');
-  ctx.fillStyle = glow;
+// A tiny 4-point sparkle (flat).
+function drawSparkle(cx, cy, r, color) {
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(mx, my, rad * 2.2, 0, Math.PI * 2);
+  ctx.moveTo(cx, cy - r);
+  ctx.quadraticCurveTo(cx + r * 0.18, cy - r * 0.18, cx + r, cy);
+  ctx.quadraticCurveTo(cx + r * 0.18, cy + r * 0.18, cx, cy + r);
+  ctx.quadraticCurveTo(cx - r * 0.18, cy + r * 0.18, cx - r, cy);
+  ctx.quadraticCurveTo(cx - r * 0.18, cy - r * 0.18, cx, cy - r);
+  ctx.closePath();
   ctx.fill();
-  // Body.
-  const body = ctx.createRadialGradient(mx - rad * 0.3, my - rad * 0.3, rad * 0.2, mx, my, rad);
-  body.addColorStop(0, '#fffdf4');
-  body.addColorStop(1, '#ecdca6');
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.arc(mx, my, rad, 0, Math.PI * 2);
-  ctx.fill();
-  // Craters.
-  ctx.fillStyle = 'rgba(180,160,110,0.35)';
-  const craters = [[-0.3, -0.1, 0.18], [0.25, 0.2, 0.14], [0.05, -0.4, 0.1], [-0.1, 0.35, 0.12]];
-  for (const [dx, dy, cr] of craters) {
-    ctx.beginPath();
-    ctx.arc(mx + dx * rad, my + dy * rad, cr * rad, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
 }
 
-function drawNight(t) {
+function drawKawaiiBg(t) {
   const { w, h } = state.cfg.arena;
-  // Full-canvas dark backdrop so the letterbox stays dark.
-  ctx.fillStyle = '#0c0720';
+  // Letterbox = deeper pink; arena = flat bright pink (no gradients).
+  ctx.fillStyle = '#ff9ed2';
   ctx.fillRect(0, 0, view.cssW, view.cssH);
+  ctx.fillStyle = KW.bg;
+  ctx.fillRect(wx(0), wy(0), wsc(w), wsc(h));
 
-  // Arena floor (deep night gradient).
-  const g = ctx.createLinearGradient(0, wy(0), 0, wy(h));
-  g.addColorStop(0, '#241147');
-  g.addColorStop(1, '#160c2e');
+  // Clip to arena for the decorations.
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowBlur = 26;
-  ctx.fillStyle = g;
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
-  ctx.fill();
-  ctx.restore();
-
-  // Clip to the arena for stars + moon.
-  ctx.save();
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
+  ctx.beginPath();
+  ctx.rect(wx(0), wy(0), wsc(w), wsc(h));
   ctx.clip();
-  drawMoon(t);
-  // Twinkling stars.
-  for (const d of backdrop) {
-    const px = wx(d.x * w);
-    const py = wy(d.y * h);
-    const a = 0.3 + 0.35 * (Math.sin(t * d.tw + d.ph) + 1);
-    ctx.globalAlpha = a;
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(px, py, d.s, 0, Math.PI * 2);
-    ctx.fill();
+
+  // Faint polka-heart tiling.
+  ctx.globalAlpha = 0.18;
+  for (let gy = 50; gy < h; gy += 84) {
+    for (let gx = ((gy / 84) % 2 < 1 ? 44 : 86); gx < w; gx += 84) {
+      drawHeartFlat(wx(gx), wy(gy), wsc(9), KW.dot, null);
+    }
   }
   ctx.globalAlpha = 1;
-  // Faint grid.
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  for (let gx = 60; gx < w; gx += 60) {
-    ctx.beginPath();
-    ctx.moveTo(wx(gx), wy(0));
-    ctx.lineTo(wx(gx), wy(h));
-    ctx.stroke();
-  }
-  for (let gy = 60; gy < h; gy += 60) {
-    ctx.beginPath();
-    ctx.moveTo(wx(0), wy(gy));
-    ctx.lineTo(wx(w), wy(gy));
-    ctx.stroke();
+
+  // Scattered cute stickers (gentle bob/twinkle).
+  for (const d of backdrop) {
+    const px = wx(d.x * w);
+    const py = wy(d.y * h) + Math.sin(t * 1.6 + d.ph) * 4;
+    const sz = wsc(d.s);
+    if (d.kind === 'heart') drawHeartFlat(px, py, sz, 'rgba(255,110,180,0.4)', null);
+    else if (d.kind === 'star') drawStar(px, py, sz, 'rgba(255,225,120,0.55)', null);
+    else {
+      const tw = 0.4 + 0.35 * (Math.sin(t * 3 + d.ph) + 1);
+      drawSparkle(px, py, sz * 0.7 * tw, 'rgba(255,255,255,0.7)');
+    }
   }
   ctx.restore();
 
-  // Border.
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(20));
-  ctx.stroke();
-}
-
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  // Bold flat sticker frame (hard corners, no shadow).
+  ctx.lineJoin = 'miter';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = wsc(7);
+  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
+  ctx.strokeStyle = KW.frame;
+  ctx.lineWidth = wsc(3);
+  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
 }
 
 function drawObstacle(o) {
@@ -712,22 +666,16 @@ function drawObstacle(o) {
   const y = wy(o.y);
   const w = wsc(o.w);
   const h = wsc(o.h);
-  const r = Math.min(w, h) * 0.22;
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 4;
-  const g = ctx.createLinearGradient(x, y, x, y + h);
-  g.addColorStop(0, '#4a2f78');
-  g.addColorStop(1, '#33205a');
-  ctx.fillStyle = g;
-  roundRect(x, y, w, h, r);
-  ctx.fill();
-  ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.lineWidth = 1.5;
-  roundRect(x + 1, y + 1, w - 2, h - 2, r);
-  ctx.stroke();
+  // Flat two-tone block with a bold outline (sticker look, hard corners).
+  ctx.fillStyle = KW.obFill;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = KW.obTop;
+  ctx.fillRect(x, y, w, Math.max(3, h * 0.22));
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = Math.max(2, wsc(3));
+  ctx.strokeRect(x, y, w, h);
+  // A little heart sticker in the middle.
+  drawHeartFlat(x + w / 2, y + h / 2, Math.min(w, h) * 0.22, '#ffffff', null);
 }
 
 function draw() {
@@ -740,23 +688,65 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
   }
 
-  drawNight(t);
-
-  // Obstacles.
+  drawKawaiiBg(t);
   for (const o of state.cfg.obstacles) drawObstacle(o);
 
   const s = state.latest;
   if (s) {
     drawPowerups(s.powerups);
     drawTrails();
-    for (const b of s.bullets) drawHeart(wx(b.x), wy(b.y), wsc(b.r) * 1.7, COLORS[b.c] || '#fff');
+    for (const b of s.bullets) drawHeartFlat(wx(b.x), wy(b.y), wsc(b.r) * 1.8, COLORS[b.c] || '#fff', OUTLINE);
     drawParticlesBehind();
     drawAimReticle(s);
     for (const p of s.players) drawPlayer(p);
+    drawEmoteBubbles(s);
     drawParticlesFront();
     drawHud(s);
   }
   ctx.restore();
+}
+
+function drawEmoteBubbles(s) {
+  const now = performance.now();
+  for (const p of s.players) {
+    const em = activeEmotes[p.id];
+    if (!em) continue;
+    const age = (now - em.born) / 1000;
+    if (age > 1.6) {
+      delete activeEmotes[p.id];
+      continue;
+    }
+    const r = playerRenderPos(p);
+    const rad = wsc(state.cfg.playerR);
+    const pop = age < 0.15 ? age / 0.15 : 1; // pop-in
+    const fade = age > 1.2 ? 1 - (age - 1.2) / 0.4 : 1;
+    const bx = wx(r.x);
+    const by = wy(r.y) - rad - wsc(30) - Math.min(age, 0.4) * 12;
+    const bw = wsc(34) * pop;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // Bubble.
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(2, wsc(2.5));
+    ctx.beginPath();
+    ctx.arc(bx, by, bw / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Tail.
+    ctx.beginPath();
+    ctx.moveTo(bx - bw * 0.16, by + bw * 0.32);
+    ctx.lineTo(bx, by + bw * 0.62);
+    ctx.lineTo(bx + bw * 0.16, by + bw * 0.32);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = `${Math.round(bw * 0.62)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(em.glyph, bx, by + 1);
+    ctx.restore();
+  }
 }
 
 function drawPowerups(pus) {
@@ -764,25 +754,27 @@ function drawPowerups(pus) {
   for (const pu of pus) {
     const info = POWERUPS[pu.t] || { emoji: '❔', ring: '#fff' };
     const cx = wx(pu.x);
-    const cy = wy(pu.y);
-    const pulse = 1 + Math.sin(t * 4 + pu.id) * 0.08;
-    const rad = wsc(16) * pulse;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
-    ctx.fillStyle = info.ring + '22';
-    ctx.fill();
+    const cy = wy(pu.y) + Math.sin(t * 3 + pu.id) * 3; // gentle bob
+    const rad = wsc(17);
+    // Flat sticker disc with a bold outline.
+    ctx.fillStyle = '#fff';
     ctx.beginPath();
     ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(20,10,35,0.85)';
     ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = info.ring;
-    ctx.shadowColor = info.ring;
-    ctx.shadowBlur = 12;
+    ctx.fillStyle = info.ring;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(2, wsc(2.5));
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.restore();
-    ctx.font = `${Math.round(rad * 1.3)}px system-ui, sans-serif`;
+    // Little sparkle accent.
+    drawSparkle(cx + rad * 0.7, cy - rad * 0.7, wsc(4) * (0.7 + 0.3 * Math.sin(t * 5 + pu.id)), '#fff');
+    ctx.font = `${Math.round(rad * 1.25)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(info.emoji, cx, cy + 1);
@@ -836,57 +828,98 @@ function drawPlayer(p) {
   const charmed = (p.charmed || 0) > 0;
 
   ctx.globalAlpha = dead ? 0.25 : 1;
+  const ol = Math.max(2.5, wsc(3.5)); // sticker outline width
 
-  // Speed aura.
+  // Speed aura (flat dashed ring).
   if (p.fx.speed > 0) {
+    ctx.save();
+    ctx.setLineDash([wsc(5), wsc(5)]);
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 9 + Math.sin(t * 10) * 2, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(52,211,153,0.55)';
-    ctx.lineWidth = 3;
+    ctx.arc(cx, cy, rad + wsc(8) + Math.sin(t * 10) * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = wsc(3);
     ctx.stroke();
+    ctx.restore();
   }
 
   // Cosmetic back layer (e.g. angel wings) sits behind the body.
   drawCosmeticBack(p.cosmetic, cx, cy, rad, t);
 
-  // Barrel (aim indicator).
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = wsc(6);
-  ctx.lineCap = 'round';
+  // "Big hearts" glow → flat outer ring.
+  if (p.fx.big > 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad + wsc(5), 0, Math.PI * 2);
+    ctx.strokeStyle = '#ff8fb1';
+    ctx.lineWidth = wsc(3);
+    ctx.stroke();
+  }
+
+  // Aim pointer: a chunky flat nub poking out in the aim direction.
+  const tipx = cx + Math.cos(p.angle) * rad;
+  const tipy = cy + Math.sin(p.angle) * rad;
+  const perp = p.angle + Math.PI / 2;
+  const pw = rad * 0.42;
   ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(p.angle) * rad * 1.5, cy + Math.sin(p.angle) * rad * 1.5);
+  ctx.moveTo(tipx + Math.cos(perp) * pw, tipy + Math.sin(perp) * pw);
+  ctx.lineTo(cx + Math.cos(p.angle) * (rad + wsc(11)), cy + Math.sin(p.angle) * (rad + wsc(11)));
+  ctx.lineTo(tipx - Math.cos(perp) * pw, tipy - Math.sin(perp) * pw);
+  ctx.closePath();
+  ctx.fillStyle = shade(color, -0.15);
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = ol;
+  ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // Body (glossy sphere).
-  ctx.save();
-  if (p.fx.big > 0) {
-    ctx.shadowColor = '#fb7185';
-    ctx.shadowBlur = 24;
-  }
-  const bg = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.15, cx, cy, rad);
-  bg.addColorStop(0, shade(color, 0.4));
-  bg.addColorStop(0.55, color);
-  bg.addColorStop(1, shade(color, -0.3));
-  ctx.fillStyle = bg;
+  // Body: flat disc with a bold sticker outline.
   ctx.beginPath();
   ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+  ctx.fillStyle = color;
   ctx.fill();
-  ctx.restore();
-  // Glossy highlight.
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = ol;
+  ctx.strokeStyle = OUTLINE;
+  ctx.stroke();
+
+  // --- Cute face ---
+  const eyeY = cy - rad * 0.04;
+  const eyeDx = rad * 0.36;
+  // Blush.
+  ctx.fillStyle = 'rgba(255,120,160,0.7)';
   ctx.beginPath();
-  ctx.arc(cx - rad * 0.32, cy - rad * 0.35, rad * 0.28, 0, Math.PI * 2);
+  ctx.arc(cx - rad * 0.5, cy + rad * 0.28, rad * 0.16, 0, Math.PI * 2);
+  ctx.arc(cx + rad * 0.5, cy + rad * 0.28, rad * 0.16, 0, Math.PI * 2);
   ctx.fill();
+  if (charmed) {
+    drawHeartFlat(cx - eyeDx, eyeY, rad * 0.4, '#ff2d6d', null);
+    drawHeartFlat(cx + eyeDx, eyeY, rad * 0.4, '#ff2d6d', null);
+  } else {
+    ctx.fillStyle = OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(cx - eyeDx, eyeY, rad * 0.13, rad * 0.17, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + eyeDx, eyeY, rad * 0.13, rad * 0.17, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx - eyeDx + rad * 0.05, eyeY - rad * 0.06, rad * 0.05, 0, Math.PI * 2);
+    ctx.arc(cx + eyeDx + rad * 0.05, eyeY - rad * 0.06, rad * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Tiny mouth.
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = Math.max(1.4, wsc(1.8));
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy + rad * 0.3, rad * 0.16, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
 
   // Shield bubble.
   if (p.fx.shield > 0) {
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 10, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(56,189,248,${0.14 + Math.sin(t * 8) * 0.05})`;
+    ctx.arc(cx, cy, rad + wsc(10), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(120,220,255,${0.16 + Math.sin(t * 8) * 0.05})`;
     ctx.fill();
-    ctx.strokeStyle = '#7dd3fc';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = wsc(2.5);
     ctx.stroke();
   }
 
@@ -897,16 +930,16 @@ function drawPlayer(p) {
   if (charmed) {
     for (let i = 0; i < 3; i++) {
       const a = t * 3 + (i / 3) * Math.PI * 2;
-      drawHeart(cx + Math.cos(a) * (rad + 12), cy - rad - 8 + Math.sin(a) * 4, wsc(6), '#ff4d6d');
+      drawHeartFlat(cx + Math.cos(a) * (rad + 12), cy - rad - 8 + Math.sin(a) * 4, wsc(6), '#ff4d6d', '#fff');
     }
   }
 
   // "You" ring.
   if (p.id === state.playerId) {
     ctx.strokeStyle = '#ffd76a';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = wsc(3);
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rad + wsc(6), 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -927,24 +960,23 @@ function drawPlayer(p) {
     ctx.fillText(active.join(''), cx, cy - rad - 26);
   }
 
-  // Health bar (animated width).
-  const bw = rad * 2.4;
-  const bh = 6;
+  // Health bar (flat, outlined, animated width).
+  const bw = rad * 2.6;
+  const bh = Math.max(6, wsc(7));
   const bx = cx - bw / 2;
-  const by = cy - rad - 15;
+  const by = cy - rad - wsc(16);
   r._hp = r._hp == null ? p.hp : r._hp + (p.hp - r._hp) * 0.2;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillStyle = '#fff';
   ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = r._hp > 40 ? '#4ade80' : '#fb7185';
+  ctx.fillStyle = r._hp > 40 ? '#4ade80' : '#ff5c8a';
   ctx.fillRect(bx, by, (bw * Math.max(0, r._hp)) / state.cfg.maxHp, bh);
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = Math.max(1.5, wsc(2));
+  ctx.strokeRect(bx, by, bw, bh);
 }
 
 // --- Cosmetics --------------------------------------------------------------
-function drawStar(cx, cy, r, color) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 8;
+function drawStar(cx, cy, r, color, outline) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 5;
@@ -952,8 +984,14 @@ function drawStar(cx, cy, r, color) {
     ctx[i === 0 ? 'moveTo' : 'lineTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
   }
   ctx.closePath();
+  ctx.fillStyle = color;
   ctx.fill();
-  ctx.restore();
+  if (outline) {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = Math.max(1.5, wsc(2));
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
 }
 
 function drawCosmeticBack(id, cx, cy, rad, t) {
@@ -1063,8 +1101,7 @@ function drawCosmeticFront(id, cx, cy, rad, color, t) {
   } else if (id === 'tophat') {
     const w = rad * 1.5, brimH = wsc(4), hatH = rad * 0.95, base = topY + rad * 0.12;
     ctx.fillStyle = '#26123a';
-    roundRect(cx - w / 2, base - brimH, w, brimH, brimH / 2);
-    ctx.fill();
+    ctx.fillRect(cx - w / 2, base - brimH, w, brimH);
     ctx.fillRect(cx - w * 0.3, base - hatH, w * 0.6, hatH - brimH + 2);
     ctx.fillStyle = '#ff5c8a';
     ctx.fillRect(cx - w * 0.3, base - brimH - wsc(4), w * 0.6, wsc(4));
@@ -1230,7 +1267,8 @@ function applyAlpha(color, a) {
   return color;
 }
 
-function drawHeart(cx, cy, size, color) {
+// Flat heart with an optional bold sticker outline.
+function drawHeartFlat(cx, cy, size, color, outline) {
   const k = size / 14;
   ctx.save();
   ctx.translate(cx, cy);
@@ -1243,36 +1281,57 @@ function drawHeart(cx, cy, size, color) {
   ctx.bezierCurveTo(9, -3, 2, 1, 0, 5);
   ctx.closePath();
   ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 8;
   ctx.fill();
+  if (outline) {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
   ctx.restore();
 }
+function drawHeart(cx, cy, size, color) {
+  drawHeartFlat(cx, cy, size, color, null);
+}
 
-// --- Game over --------------------------------------------------------------
+// --- Game over (messages vary every time) -----------------------------------
+const WIN_TEXTS = [
+  (w, l) => `Sieg für <b>${w}</b>! (๑>ᴗ<๑)♡<br />Lehn dich zurück — <b>${l}</b> schuldet dir eine sehr wichtige Frage…`,
+  (w, l) => `<b>${w}</b> hat gewonnen! ٩(♡ε♡)۶<br />Und jetzt… macht <b>${l}</b> dir einen Antrag~ ♡`,
+  (w, l) => `Zu süß, zu stark: <b>${w}</b> siegt! ✧<br />Zeit, dass <b>${l}</b> auf die Knie geht (˶ᵔ ᵕ ᵔ˶)`,
+  (w, l) => `Gewonnen, <b>${w}</b>! ♡( ◡‿◡ )<br /><b>${l}</b> ist jetzt dran mit der großen Frage…`,
+];
+const LOSE_TEXTS = [
+  (l, w) => `Besiegt, <b>${l}</b>! (｡•́︿•̀｡)<br />Du weißt, was das heißt… mach <b>${w}</b> einen Antrag ♡`,
+  (l, w) => `Ohhh nein, <b>${l}</b> verliert~ (>﹏<)<br />Auf die Knie mit dir — <b>${w}</b> wartet! 💍`,
+  (l, w) => `<b>${l}</b>, du hast verloren (๑•́ ₃ •̀๑)<br />Aber Herzchen: jetzt kommt DEIN großer Moment für <b>${w}</b>~`,
+  (l, w) => `Aus, vorbei, verknallt-verloren, <b>${l}</b>! ⋆｡°✩<br />Zeit für den Antrag an <b>${w}</b> ♡`,
+];
+const SCRIPTS = [
+  (name) => `${name}, du hast mich besiegt — aber mein Herz hast du schon längst. Willst du mich heiraten? ♡`,
+  (name) => `Ich würd jedes Duell verlieren, solang ich für immer bei dir sein darf. ${name}, heiratest du mich? (๑>ᴗ<๑)`,
+  (name) => `Nun, ${name}, du gewinnst — und ich gewinne jeden Tag mit dir. Willst du mich heiraten? ٩(♡ε♡)۶`,
+  (name) => `${name}, mein Herz macht seit dir nur noch Doki-Doki. Willst du für immer meins sein? Heirat mich! ♡`,
+  (name) => `Verloren hab ich das Spiel, aber gewonnen hab ich dich. ${name}, willst du mich heiraten? ⋆˚✩`,
+];
+const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
 function renderGameOver(msg) {
   clearInterval(state.inputTimer);
   sticks.move = sticks.aim = null;
+  const w = escapeHtml(msg.winner.name);
+  const l = escapeHtml(msg.loser.name);
   if (msg.youWon) {
-    $('#won-text').innerHTML = `Du hast das Duell gewonnen, <b>${escapeHtml(msg.winner.name)}</b>! 🏆<br />Lehn dich zurück — <b>${escapeHtml(msg.loser.name)}</b> schuldet dir eine sehr wichtige Frage…`;
+    $('#won-text').innerHTML = pickOne(WIN_TEXTS)(w, l);
     show('screen-won');
     launchConfetti(2500);
   } else {
-    $('#lost-text').innerHTML = `Du wurdest besiegt, <b>${escapeHtml(msg.loser.name)}</b>! 😅<br />Du weißt, was das bedeutet. Zeit, <b>${escapeHtml(msg.winner.name)}</b> einen Antrag zu machen.`;
-    $('#proposal-script').textContent = pickScript(msg.winner.name);
+    $('#lost-text').innerHTML = pickOne(LOSE_TEXTS)(l, w);
+    $('#proposal-script').textContent = pickOne(SCRIPTS)(msg.winner.name || 'mein Schatz');
     $('#btn-propose').classList.remove('hidden');
     $('#lost-waiting').classList.add('hidden');
     show('screen-lost');
   }
-}
-
-const SCRIPTS = [
-  (name) => `${name}, du hast mich fair und ehrlich besiegt — aber die Wahrheit ist: Mein Herz gehört dir schon lange. Willst du mich heiraten?`,
-  (name) => `Ich würde jedes Duell für den Rest meines Lebens verlieren, wenn ich dafür für immer an deiner Seite sein darf. ${name}, willst du mich heiraten?`,
-  (name) => `Nun, ${name}, du gewinnst — und ehrlich gesagt gewinne ich auch, jeden einzelnen Tag mit dir. Willst du mich heiraten?`,
-];
-function pickScript(name) {
-  return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](name || 'mein Schatz');
 }
 
 function renderProposalMade(msg) {

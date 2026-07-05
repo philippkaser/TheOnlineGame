@@ -36,12 +36,13 @@ However the duel ends, someone gets down on one knee.
    | 💋 | Kuss | your hits leave your partner lovestruck (slowed) |
 
 7. **Blow your partner a kiss** anytime with the emote bar at the top
-   (💋 ❤️ 😘 🌹) — it flies across both phones. Sweet love notes appear
-   between rounds, too.
+   (💋 ❤️ 😘 🌹) — it pops as a cute speech bubble over your fighter on both
+   phones. Sweet love notes appear between rounds, too.
 8. Whoever wins **2 rounds** wins the duel.
 9. The loser's phone shows **„Geh auf ein Knie 💍“** and a suggested line. Tap
    it, and the winner's phone lights up with **„Willst du mich heiraten?“** and
-   a big **JA**-button.
+   a big **JA**-button. The win / lose / proposal lines are randomised, so
+   they read differently every match.
 10. Say yes → confetti and hearts on both phones. 🎉
 
 On a desktop browser you can test with **WASD / arrow keys** to move, the
@@ -152,14 +153,15 @@ The German proposal lines are the `SCRIPTS` array in `public/app.js`.
   handshake, and streams gameplay events (fires, hits, pickups, deaths) for the
   client's effects.
 - **`public/`** — the mobile-first German client (`index.html`, `style.css`,
-  `app.js`). Everything is hand-drawn on a `<canvas>`: a **moonlit night
-  arena** with a glowing moon, twinkling stars and rounded cover blocks, and
-  glossy fighters that wear the **cosmetic** you picked in the lobby (crown,
-  tiara, angel wings, horns, ears, top hat, bow, moon, star). It runs
-  **client-side prediction** of your own player (so movement feels instant)
-  with smooth server reconciliation, interpolates your opponent, draws the
-  twin-stick controls, aim reticle and emote bar, and auto-reconnects if a
-  phone briefly drops.
+  `app.js`). Everything is hand-drawn on a `<canvas>` in a flat **kawaii /
+  menhera sticker style** (Needy-Streamer vibe): saturated pinks, bold dark
+  outlines, cute blushing dot-eyed fighters, flat pixel-y hearts, scattered
+  stars and sparkles — no soft 3D shading. Fighters wear the **cosmetic** you
+  picked in the lobby (crown, tiara, angel wings, horns, ears, top hat, bow,
+  moon, star). It runs **client-side prediction** of your own player (so
+  movement feels instant) with smooth server reconciliation, interpolates your
+  opponent, draws the twin-stick controls and emote bubbles, and auto-reconnects
+  if a phone briefly drops.
 - **`deploy/`** — the systemd unit and Caddyfile used above.
 
 No database, no build step. State lives in memory — perfect for a game you play
