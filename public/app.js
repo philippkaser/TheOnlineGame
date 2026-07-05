@@ -1,23 +1,40 @@
 // ---------------------------------------------------------------------------
-//  The Love Duel — top-down shooter client
+//  Das Liebes-Duell — client (prediction + powerups + juice)
 // ---------------------------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-const COLORS = ['#ff5c8a', '#5ab8ff']; // player index 0 / 1
+const COLORS = ['#ff5c8a', '#5ab8ff']; // player spawn 0 / 1
+const COLORS_SOFT = ['rgba(255,92,138,', 'rgba(90,184,255,'];
+
+const POWERUPS = {
+  heal: { emoji: '💚', ring: '#4ade80', label: 'Heilung' },
+  rapid: { emoji: '⚡', ring: '#ffd76a', label: 'Schnellfeuer' },
+  spread: { emoji: '🔱', ring: '#c084fc', label: 'Dreifach' },
+  shield: { emoji: '🛡️', ring: '#38bdf8', label: 'Schild' },
+  speed: { emoji: '👟', ring: '#34d399', label: 'Speed' },
+  big: { emoji: '💥', ring: '#fb7185', label: 'Große Herzen' },
+};
 
 const state = {
   ws: null,
   playerId: null,
   isHost: false,
   code: null,
-  cfg: null, // gameStart config
-  latest: null, // most recent server state
-  render: {}, // smoothed positions per player id
-  input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false },
+  cfg: null,
+  phys: null,
+  latest: null,
+  self: null, // predicted { x, y, vx, vy, dashUntil, dashReadyAt, prevDash }
+  selfFx: {},
+  opp: {}, // smoothed opponent render pos by id
+  input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false, dash: false },
   inputTimer: null,
   raf: null,
+  lastFrame: 0,
+  shake: 0,
+  trails: {}, // bulletId -> [{x,y}]
 };
+const particles = [];
 
 // --- Screen management ------------------------------------------------------
 function show(id) {
@@ -46,7 +63,7 @@ function getName() {
   return ($('#name-input').value || '').trim();
 }
 
-// --- Home actions -----------------------------------------------------------
+// --- Home / lobby actions ---------------------------------------------------
 $('#btn-create').addEventListener('click', () => {
   $('#home-error').textContent = '';
   connect(() => sendMsg({ type: 'create', name: getName() || 'Spieler 1' }));
@@ -71,7 +88,7 @@ $('#btn-propose').addEventListener('click', () => {
 $('#btn-yes').addEventListener('click', () => sendMsg({ type: 'accept' }));
 $('#btn-again').addEventListener('click', () => sendMsg({ type: 'playAgain' }));
 
-// --- Message handling -------------------------------------------------------
+// --- Messages ---------------------------------------------------------------
 function handleMessage(msg) {
   switch (msg.type) {
     case 'joined':
@@ -91,7 +108,7 @@ function handleMessage(msg) {
       startGame(msg);
       break;
     case 'state':
-      state.latest = msg;
+      onState(msg);
       break;
     case 'gameOver':
       renderGameOver(msg);
@@ -105,7 +122,6 @@ function handleMessage(msg) {
   }
 }
 
-// --- Lobby ------------------------------------------------------------------
 function renderLobby(msg) {
   state.code = msg.code;
   $('#lobby-code').textContent = msg.code;
@@ -113,7 +129,7 @@ function renderLobby(msg) {
   list.innerHTML = '';
   msg.players.forEach((p) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="dot"></span><span>${escapeHtml(p.name)}${p.id === state.playerId ? ' (you)' : ''}</span>`;
+    li.innerHTML = `<span class="dot"></span><span>${escapeHtml(p.name)}${p.id === state.playerId ? ' (du)' : ''}</span>`;
     list.appendChild(li);
   });
   if (msg.players.length < 2) {
@@ -143,13 +159,19 @@ let view = { scale: 1, ox: 0, oy: 0, cssW: 0, cssH: 0 };
 
 function startGame(cfg) {
   state.cfg = cfg;
+  state.phys = cfg.physics;
   state.latest = null;
-  state.render = {};
+  state.self = null;
+  state.opp = {};
+  state.trails = {};
+  particles.length = 0;
+  state.shake = 0;
   stopConfetti();
   show('screen-game');
   resizeCanvas();
   bindControls();
   startInputLoop();
+  state.lastFrame = performance.now();
   if (!state.raf) loop();
 }
 
@@ -172,25 +194,109 @@ window.addEventListener('resize', () => {
 
 const wx = (x) => view.ox + x * view.scale;
 const wy = (y) => view.oy + y * view.scale;
-const ws = (s) => s * view.scale;
+const wsc = (s) => s * view.scale;
 
-// --- Input: twin-stick touch + keyboard/mouse ------------------------------
-const sticks = { move: null, aim: null }; // { id, ox, oy, x, y }
-const STICK_R = 55;
+// --- State ingest + prediction reconciliation -------------------------------
+function onState(msg) {
+  state.latest = msg;
+  const now = performance.now();
+  const me = msg.players.find((p) => p.id === state.playerId);
+  if (me) {
+    state.selfFx = me.fx;
+    if (!state.self) {
+      state.self = { x: me.x, y: me.y, vx: me.vx, vy: me.vy, dashUntil: 0, dashReadyAt: now + me.dashCd, prevDash: false };
+    } else {
+      const s = state.self;
+      const err = Math.hypot(s.x - me.x, s.y - me.y);
+      if (err > 55 || msg.phase !== 'playing') {
+        s.x = me.x;
+        s.y = me.y;
+      } else {
+        s.x += (me.x - s.x) * 0.25;
+        s.y += (me.y - s.y) * 0.25;
+      }
+      s.vx = me.vx;
+      s.vy = me.vy;
+      s.dashReadyAt = now + me.dashCd;
+    }
+  }
+  // Bullet trails.
+  const seen = new Set();
+  for (const b of msg.bullets) {
+    seen.add(b.i);
+    const t = (state.trails[b.i] = state.trails[b.i] || []);
+    t.push({ x: b.x, y: b.y });
+    if (t.length > 4) t.shift();
+  }
+  for (const id of Object.keys(state.trails)) if (!seen.has(Number(id))) delete state.trails[id];
+
+  // Events → juice.
+  for (const ev of msg.events || []) handleEvent(ev);
+}
+
+function handleEvent(ev) {
+  const col = COLORS[ev.c] || '#fff';
+  if (ev.t === 'fire') {
+    for (let i = 0; i < 5; i++) {
+      const a = ev.a + (Math.random() - 0.5) * 0.6;
+      const sp = 60 + Math.random() * 120;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.25, max: 0.25, r: 3, color: col, kind: 'spark' });
+    }
+  } else if (ev.t === 'hit') {
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * 180;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.5, max: 0.5, r: 4, color: col, kind: 'heart' });
+    }
+    if (ev.victim === state.playerId) state.shake = Math.min(1, state.shake + 0.8);
+  } else if (ev.t === 'block') {
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 80 + Math.random() * 120;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.35, max: 0.35, r: 3, color: '#38bdf8', kind: 'spark' });
+    }
+  } else if (ev.t === 'pickup') {
+    const pu = POWERUPS[ev.type];
+    particles.push({ x: ev.x, y: ev.y, vx: 0, vy: -40, life: 1.1, max: 1.1, r: 0, color: pu ? pu.ring : '#fff', kind: 'float', text: pu ? pu.emoji + ' ' + pu.label : '' });
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * 160;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.5, max: 0.5, r: 3, color: pu ? pu.ring : '#fff', kind: 'spark' });
+    }
+  } else if (ev.t === 'dash') {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 30 + Math.random() * 70;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.3, r: 5, color: COLORS_SOFT[ev.c] + '0.5)', kind: 'puff' });
+    }
+  } else if (ev.t === 'death') {
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 80 + Math.random() * 320;
+      particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.9, max: 0.9, r: 5, color: col, kind: 'heart' });
+    }
+    state.shake = 1;
+  }
+}
+
+// --- Controls ---------------------------------------------------------------
+const sticks = { move: null, aim: null };
+const STICK_R = 60;
 const keys = {};
 let mouse = { active: false, x: 0, y: 0, down: false };
+let lastLeftTap = 0;
+let dashUntilSend = 0;
 
 function bindControls() {
   if (canvas.dataset.bound) return;
   canvas.dataset.bound = '1';
-
-  canvas.addEventListener('touchstart', onTouch, { passive: false });
-  canvas.addEventListener('touchmove', onTouch, { passive: false });
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
   canvas.addEventListener('touchend', onTouchEnd, { passive: false });
   canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
-
-  // Desktop fallback.
-  window.addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true));
+  window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+  });
   window.addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
   canvas.addEventListener('mousemove', (e) => {
     const r = canvas.getBoundingClientRect();
@@ -202,23 +308,24 @@ function bindControls() {
   window.addEventListener('mouseup', () => (mouse.down = false));
 }
 
-function onTouch(e) {
+function onTouchStart(e) {
   e.preventDefault();
   const r = canvas.getBoundingClientRect();
+  const now = performance.now();
   for (const t of Array.from(e.changedTouches)) {
     const x = t.clientX - r.left;
     const y = t.clientY - r.top;
-    // Assign a new touch to a half if that stick is free.
     const side = x < view.cssW / 2 ? 'move' : 'aim';
-    if (!sticks[side] || sticks[side].id === t.identifier) {
-      if (!sticks[side]) sticks[side] = { id: t.identifier, ox: x, oy: y, x, y };
-      else {
-        sticks[side].x = x;
-        sticks[side].y = y;
-      }
+    if (side === 'move') {
+      if (now - lastLeftTap < 280) dashUntilSend = now + 130; // double-tap = dash
+      lastLeftTap = now;
     }
+    if (!sticks[side]) sticks[side] = { id: t.identifier, ox: x, oy: y, x, y };
   }
-  // Update existing sticks that moved.
+}
+function onTouchMove(e) {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
   for (const t of Array.from(e.touches)) {
     for (const side of ['move', 'aim']) {
       if (sticks[side] && sticks[side].id === t.identifier) {
@@ -238,28 +345,28 @@ function onTouchEnd(e) {
 }
 
 function computeInput() {
-  const inp = { mx: 0, my: 0, ax: 0, ay: 0, firing: false };
-
+  const inp = { mx: 0, my: 0, ax: 0, ay: 0, firing: false, dash: false };
   if (sticks.move) {
-    let dx = sticks.move.x - sticks.move.ox;
-    let dy = sticks.move.y - sticks.move.oy;
+    const dx = sticks.move.x - sticks.move.ox;
+    const dy = sticks.move.y - sticks.move.oy;
     const m = Math.hypot(dx, dy) || 1;
-    const clamped = Math.min(m, STICK_R) / STICK_R;
-    inp.mx = (dx / m) * clamped;
-    inp.my = (dy / m) * clamped;
+    const c = Math.min(m, STICK_R) / STICK_R;
+    if (c > 0.15) {
+      inp.mx = (dx / m) * c;
+      inp.my = (dy / m) * c;
+    }
   }
   if (sticks.aim) {
     const dx = sticks.aim.x - sticks.aim.ox;
     const dy = sticks.aim.y - sticks.aim.oy;
     const m = Math.hypot(dx, dy);
-    if (m > STICK_R * 0.25) {
+    if (m > STICK_R * 0.28) {
       inp.ax = dx / m;
       inp.ay = dy / m;
       inp.firing = true;
     }
   }
-
-  // Keyboard movement.
+  // Keyboard / mouse fallback.
   let kx = 0;
   let ky = 0;
   if (keys['a'] || keys['arrowleft']) kx -= 1;
@@ -271,11 +378,9 @@ function computeInput() {
     inp.mx = kx / m;
     inp.my = ky / m;
   }
-  // Mouse aim.
-  const me = state.latest && state.latest.players.find((p) => p.id === state.playerId);
-  if (mouse.active && me) {
-    const dx = mouse.x - wx(me.x);
-    const dy = mouse.y - wy(me.y);
+  if (mouse.active && state.self) {
+    const dx = mouse.x - wx(state.self.x);
+    const dy = mouse.y - wy(state.self.y);
     const m = Math.hypot(dx, dy);
     if (m > 4) {
       inp.ax = dx / m;
@@ -283,6 +388,7 @@ function computeInput() {
       if (mouse.down || keys[' ']) inp.firing = true;
     }
   }
+  if (keys['shift'] || performance.now() < dashUntilSend) inp.dash = true;
   return inp;
 }
 
@@ -292,25 +398,125 @@ function startInputLoop() {
     if (!$('#screen-game').classList.contains('active')) return;
     const inp = computeInput();
     state.input = inp;
-    sendMsg({ type: 'input', ...inp });
-  }, 50);
+    sendMsg({ type: 'input', mx: inp.mx, my: inp.my, ax: inp.ax, ay: inp.ay, firing: inp.firing, dash: inp.dash });
+  }, 40);
+}
+
+// --- Client-side prediction of your own player ------------------------------
+function clientObstacleResolve(s) {
+  const R = state.cfg.playerR;
+  for (const o of state.cfg.obstacles) {
+    const cx = Math.max(o.x, Math.min(s.x, o.x + o.w));
+    const cy = Math.max(o.y, Math.min(s.y, o.y + o.h));
+    const dx = s.x - cx;
+    const dy = s.y - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < R) {
+      if (dist === 0) {
+        const l = s.x - o.x, rr = o.x + o.w - s.x, tp = s.y - o.y, bt = o.y + o.h - s.y;
+        const m = Math.min(l, rr, tp, bt);
+        if (m === l) s.x = o.x - R;
+        else if (m === rr) s.x = o.x + o.w + R;
+        else if (m === tp) s.y = o.y - R;
+        else s.y = o.y + o.h + R;
+      } else {
+        const push = (R - dist) / dist;
+        s.x += dx * push;
+        s.y += dy * push;
+      }
+      s.vx *= 0.5;
+      s.vy *= 0.5;
+    }
+  }
+}
+
+function predictSelf(dt) {
+  const s = state.self;
+  if (!s || !state.phys) return;
+  const p = state.phys;
+  const inp = state.input;
+  const now = performance.now();
+
+  const pressed = inp.dash && !s.prevDash;
+  s.prevDash = inp.dash;
+  if (pressed && now >= s.dashReadyAt) {
+    let dx = inp.mx, dy = inp.my;
+    if (Math.hypot(dx, dy) < 0.2) {
+      dx = inp.ax;
+      dy = inp.ay;
+    }
+    const m = Math.hypot(dx, dy);
+    if (m >= 0.2) {
+      s.vx = (dx / m) * p.dashSpeed;
+      s.vy = (dy / m) * p.dashSpeed;
+      s.dashUntil = now + p.dashTime * 1000;
+      s.dashReadyAt = now + p.dashCooldown;
+    }
+  }
+
+  const dashing = now < s.dashUntil;
+  if (!dashing) {
+    s.vx += inp.mx * p.accel * dt;
+    s.vy += inp.my * p.accel * dt;
+    const f = Math.max(0, 1 - p.friction * dt);
+    s.vx *= f;
+    s.vy *= f;
+    const sp = (state.selfFx.speed > 0 ? p.maxSpeed * p.speedMult : p.maxSpeed);
+    const v = Math.hypot(s.vx, s.vy);
+    if (v > sp) {
+      s.vx = (s.vx / v) * sp;
+      s.vy = (s.vy / v) * sp;
+    }
+  }
+  s.x += s.vx * dt;
+  s.y += s.vy * dt;
+  const R = state.cfg.playerR;
+  const { w, h } = state.cfg.arena;
+  if (s.x < R) (s.x = R), (s.vx = 0);
+  else if (s.x > w - R) (s.x = w - R), (s.vx = 0);
+  if (s.y < R) (s.y = R), (s.vy = 0);
+  else if (s.y > h - R) (s.y = h - R), (s.vy = 0);
+  clientObstacleResolve(s);
 }
 
 // --- Render loop ------------------------------------------------------------
 function loop() {
   state.raf = requestAnimationFrame(loop);
   if (!state.cfg || !$('#screen-game').classList.contains('active')) return;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - state.lastFrame) / 1000);
+  state.lastFrame = now;
+
+  if (state.latest && state.latest.phase === 'playing') predictSelf(dt);
+  updateParticles(dt);
+  state.shake = Math.max(0, state.shake - dt * 3);
   draw();
+}
+
+function selfRenderPos() {
+  return state.self;
+}
+function playerRenderPos(p) {
+  if (p.id === state.playerId && state.self) return state.self;
+  const r = (state.opp[p.id] = state.opp[p.id] || { x: p.x, y: p.y });
+  r.x += (p.x - r.x) * 0.4;
+  r.y += (p.y - r.y) * 0.4;
+  return r;
 }
 
 function draw() {
   const { w, h } = state.cfg.arena;
   ctx.clearRect(0, 0, view.cssW, view.cssH);
 
-  // Arena floor.
+  ctx.save();
+  if (state.shake > 0) {
+    const s = state.shake * 10;
+    ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+  }
+
+  // Floor + grid.
   ctx.fillStyle = '#160c28';
-  ctx.fillRect(wx(0), wy(0), ws(w), ws(h));
-  // Grid.
+  ctx.fillRect(wx(0), wy(0), wsc(w), wsc(h));
   ctx.strokeStyle = 'rgba(255,255,255,0.05)';
   ctx.lineWidth = 1;
   for (let gx = 0; gx <= w; gx += 60) {
@@ -325,126 +531,219 @@ function draw() {
     ctx.lineTo(wx(w), wy(gy));
     ctx.stroke();
   }
-  // Arena border.
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';
   ctx.lineWidth = 2;
-  ctx.strokeRect(wx(0), wy(0), ws(w), ws(h));
+  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
 
   // Obstacles.
   ctx.fillStyle = '#3a2560';
   ctx.strokeStyle = 'rgba(255,255,255,0.12)';
   for (const o of state.cfg.obstacles) {
-    ctx.fillRect(wx(o.x), wy(o.y), ws(o.w), ws(o.h));
-    ctx.strokeRect(wx(o.x), wy(o.y), ws(o.w), ws(o.h));
+    ctx.fillRect(wx(o.x), wy(o.y), wsc(o.w), wsc(o.h));
+    ctx.strokeRect(wx(o.x), wy(o.y), wsc(o.w), wsc(o.h));
   }
 
   const s = state.latest;
   if (s) {
-    // Hearts (projectiles).
-    for (const b of s.bullets) {
-      drawHeart(wx(b[0]), wy(b[1]), ws(state.cfg.bulletR) * 1.7, COLORS[b[2]] || '#fff');
-    }
-    // Players (smoothed).
-    for (const p of s.players) {
-      const r = (state.render[p.id] = state.render[p.id] || { x: p.x, y: p.y, angle: p.angle });
-      r.x += (p.x - r.x) * 0.35;
-      r.y += (p.y - r.y) * 0.35;
-      r.angle = p.angle;
-      drawPlayer(p, r);
-    }
+    drawPowerups(s.powerups);
+    drawTrails();
+    for (const b of s.bullets) drawHeart(wx(b.x), wy(b.y), wsc(b.r) * 1.7, COLORS[b.c] || '#fff');
+    drawParticlesBehind();
+    drawAimReticle(s);
+    for (const p of s.players) drawPlayer(p);
+    drawParticlesFront();
     drawHud(s);
   }
-
-  drawSticks();
-}
-
-function drawHeart(cx, cy, size, color) {
-  // Path authored in a roughly ±16 unit box, then scaled to `size`.
-  const k = size / 14;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(k, k);
-  ctx.beginPath();
-  ctx.moveTo(0, 5);
-  ctx.bezierCurveTo(-2, 1, -9, -3, -9, -8);
-  ctx.bezierCurveTo(-9, -13, -4, -13, 0, -8);
-  ctx.bezierCurveTo(4, -13, 9, -13, 9, -8);
-  ctx.bezierCurveTo(9, -3, 2, 1, 0, 5);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 8;
-  ctx.fill();
   ctx.restore();
 }
 
-function drawPlayer(p, r) {
+function drawPowerups(pus) {
+  const t = performance.now() / 1000;
+  for (const pu of pus) {
+    const info = POWERUPS[pu.t] || { emoji: '❔', ring: '#fff' };
+    const cx = wx(pu.x);
+    const cy = wy(pu.y);
+    const pulse = 1 + Math.sin(t * 4 + pu.id) * 0.08;
+    const rad = wsc(16) * pulse;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
+    ctx.fillStyle = info.ring + '22';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20,10,35,0.85)';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = info.ring;
+    ctx.shadowColor = info.ring;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.restore();
+    ctx.font = `${Math.round(rad * 1.3)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(info.emoji, cx, cy + 1);
+  }
+}
+
+function drawTrails() {
+  for (const id of Object.keys(state.trails)) {
+    const t = state.trails[id];
+    if (t.length < 2) continue;
+    for (let i = 0; i < t.length - 1; i++) {
+      const a = i / t.length;
+      ctx.strokeStyle = `rgba(255,255,255,${0.06 + a * 0.12})`;
+      ctx.lineWidth = wsc(3) * (a + 0.3);
+      ctx.beginPath();
+      ctx.moveTo(wx(t[i].x), wy(t[i].y));
+      ctx.lineTo(wx(t[i + 1].x), wy(t[i + 1].y));
+      ctx.stroke();
+    }
+  }
+}
+
+function drawAimReticle(s) {
+  const me = s.players.find((p) => p.id === state.playerId);
+  if (!me || me.hp <= 0 || !state.self) return;
+  const inp = state.input;
+  const amag = Math.hypot(inp.ax, inp.ay);
+  if (amag < 0.2) return;
+  const cx = wx(state.self.x);
+  const cy = wy(state.self.y);
+  const len = wsc(140);
+  ctx.save();
+  ctx.setLineDash([6, 8]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(Math.atan2(inp.ay, inp.ax)) * wsc(24), cy + Math.sin(Math.atan2(inp.ay, inp.ax)) * wsc(24));
+  ctx.lineTo(cx + (inp.ax / amag) * len, cy + (inp.ay / amag) * len);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlayer(p) {
+  const r = playerRenderPos(p);
   const cx = wx(r.x);
   const cy = wy(r.y);
-  const rad = ws(state.cfg.playerR);
+  const rad = wsc(state.cfg.playerR);
   const color = COLORS[p.spawn];
   const dead = p.hp <= 0;
+  const t = performance.now() / 1000;
 
-  ctx.globalAlpha = dead ? 0.3 : 1;
+  ctx.globalAlpha = dead ? 0.25 : 1;
 
-  // Body.
-  ctx.beginPath();
-  ctx.fillStyle = color;
-  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-  ctx.fill();
+  // Speed aura.
+  if (p.fx.speed > 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad + 8 + Math.sin(t * 10) * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(52,211,153,0.5)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  // Big glow.
+  if (p.fx.big > 0) {
+    ctx.save();
+    ctx.shadowColor = '#fb7185';
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Barrel.
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = ws(6);
+  ctx.lineWidth = wsc(6);
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(r.angle) * rad * 1.5, cy + Math.sin(r.angle) * rad * 1.5);
+  ctx.lineTo(cx + Math.cos(p.angle) * rad * 1.5, cy + Math.sin(p.angle) * rad * 1.5);
   ctx.stroke();
+
+  // Shield bubble.
+  if (p.fx.shield > 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad + 9, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(56,189,248,${0.14 + Math.sin(t * 8) * 0.05})`;
+    ctx.fill();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
 
   // "You" ring.
   if (p.id === state.playerId) {
     ctx.strokeStyle = '#ffd76a';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rad + 5, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
 
-  // Health bar.
+  // Active-effect emoji stack above the player.
+  const active = [];
+  if (p.fx.rapid > 0) active.push('⚡');
+  if (p.fx.spread > 0) active.push('🔱');
+  if (p.fx.big > 0) active.push('💥');
+  if (p.fx.speed > 0) active.push('👟');
+  if (p.fx.shield > 0) active.push('🛡️');
+  if (active.length) {
+    ctx.font = `${Math.round(wsc(14))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(active.join(''), cx, cy - rad - 26);
+  }
+
+  // Health bar (animated width).
   const bw = rad * 2.4;
   const bh = 6;
   const bx = cx - bw / 2;
-  const by = cy - rad - 16;
+  const by = cy - rad - 15;
+  r._hp = r._hp == null ? p.hp : r._hp + (p.hp - r._hp) * 0.2;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = p.hp > 40 ? '#4ade80' : '#fb7185';
-  ctx.fillRect(bx, by, (bw * p.hp) / state.cfg.maxHp, bh);
+  ctx.fillStyle = r._hp > 40 ? '#4ade80' : '#fb7185';
+  ctx.fillRect(bx, by, (bw * Math.max(0, r._hp)) / state.cfg.maxHp, bh);
 }
 
 function drawHud(s) {
-  // Round-win pips, colour-coded, "you" marked.
   const need = state.cfg.roundsToWin;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const meFirst = s.players.find((p) => p.id === state.playerId)?.spawn === 0;
-  const ordered = meFirst ? s.players : [...s.players].reverse();
-
-  ctx.font = '600 14px system-ui, sans-serif';
-  let y = view.oy + 18;
-  // Left = you.
+  const ordered = meFirst ? s.players : [...s.players].slice().reverse();
   const you = ordered[0];
   const opp = ordered[1];
+  const y = view.oy + 18;
   drawPips(view.ox + 14, y, need, you.wins, COLORS[you.spawn], 'left', you.id === state.playerId ? 'DU' : '');
-  drawPips(view.ox + ws(state.cfg.arena.w) - 14, y, need, opp.wins, COLORS[opp.spawn], 'right', '');
+  drawPips(view.ox + wsc(state.cfg.arena.w) - 14, y, need, opp.wins, COLORS[opp.spawn], 'right', '');
 
-  // Countdown / round banner.
+  // Dash cooldown indicator under your player.
+  const me = s.players.find((p) => p.id === state.playerId);
+  if (me && me.hp > 0 && state.self) {
+    const cx = wx(state.self.x);
+    const cy = wy(state.self.y) + wsc(state.cfg.playerR) + 12;
+    const ready = me.dashCd <= 0;
+    ctx.beginPath();
+    ctx.fillStyle = ready ? 'rgba(255,215,106,0.9)' : 'rgba(255,255,255,0.25)';
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   if (s.phase === 'countdown') {
-    const cx = view.ox + ws(state.cfg.arena.w) / 2;
-    const cy = view.oy + ws(state.cfg.arena.h) / 2;
+    const cx = view.ox + wsc(state.cfg.arena.w) / 2;
+    const cy = view.oy + wsc(state.cfg.arena.h) / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(wx(0), wy(0), ws(state.cfg.arena.w), ws(state.cfg.arena.h));
+    ctx.fillRect(wx(0), wy(0), wsc(state.cfg.arena.w), wsc(state.cfg.arena.h));
     ctx.fillStyle = '#ffd76a';
     ctx.font = '800 90px system-ui, sans-serif';
     ctx.fillText(s.count > 0 ? String(s.count) : 'LOS!', cx, cy);
@@ -473,31 +772,80 @@ function drawPips(x, y, need, wins, color, align, label) {
     ctx.fillStyle = '#ffd76a';
     ctx.font = '700 11px system-ui, sans-serif';
     ctx.textAlign = align;
-    ctx.fillText(label, align === 'left' ? x : x, y + 18);
+    ctx.fillText(label, x, y + 18);
     ctx.textAlign = 'center';
   }
 }
 
-function drawSticks() {
-  for (const side of ['move', 'aim']) {
-    const st = sticks[side];
-    if (!st) continue;
-    const kx = st.x - st.ox;
-    const ky = st.y - st.oy;
-    const m = Math.hypot(kx, ky) || 1;
-    const c = Math.min(m, STICK_R);
-    const nx = st.ox + (kx / m) * c;
-    const ny = st.oy + (ky / m) * c;
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 3;
-    ctx.arc(st.ox, st.oy, STICK_R, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.fillStyle = side === 'aim' ? 'rgba(255,92,138,0.75)' : 'rgba(255,255,255,0.55)';
-    ctx.arc(nx, ny, 26, 0, Math.PI * 2);
-    ctx.fill();
+// --- Particles --------------------------------------------------------------
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.92;
+    p.vy *= 0.92;
+    if (p.kind === 'heart') p.vy += 120 * dt;
   }
+}
+function drawParticlesBehind() {
+  for (const p of particles) if (p.kind === 'puff') drawParticle(p);
+}
+function drawParticlesFront() {
+  for (const p of particles) if (p.kind !== 'puff') drawParticle(p);
+}
+function drawParticle(p) {
+  const a = Math.max(0, p.life / p.max);
+  if (p.kind === 'float') {
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.font = `700 ${Math.round(wsc(15))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, wx(p.x), wy(p.y));
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (p.kind === 'heart') {
+    drawHeart(wx(p.x), wy(p.y), wsc(p.r) * a * 1.6 + 2, applyAlpha(p.color, a));
+    return;
+  }
+  ctx.globalAlpha = a;
+  ctx.beginPath();
+  ctx.fillStyle = p.color;
+  ctx.arc(wx(p.x), wy(p.y), wsc(p.r) * (p.kind === 'puff' ? 1 + (1 - a) : a) + 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function applyAlpha(color, a) {
+  if (color.startsWith('#')) {
+    const n = parseInt(color.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  return color;
+}
+
+function drawHeart(cx, cy, size, color) {
+  const k = size / 14;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(k, k);
+  ctx.beginPath();
+  ctx.moveTo(0, 5);
+  ctx.bezierCurveTo(-2, 1, -9, -3, -9, -8);
+  ctx.bezierCurveTo(-9, -13, -4, -13, 0, -8);
+  ctx.bezierCurveTo(4, -13, 9, -13, 9, -8);
+  ctx.bezierCurveTo(9, -3, 2, 1, 0, 5);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.restore();
 }
 
 // --- Game over --------------------------------------------------------------
@@ -526,7 +874,6 @@ function pickScript(name) {
   return SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)](name || 'mein Schatz');
 }
 
-// --- Proposal + celebration -------------------------------------------------
 function renderProposalMade(msg) {
   if (msg.proposee === state.playerId) {
     launchConfetti(1500);

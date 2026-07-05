@@ -16,15 +16,28 @@ However the duel ends, someone gets down on one knee.
 2. The other phone types the code into **RAUMCODE** and taps **Duell beitreten**.
 3. The host taps **Duell starten**. Both phones show the same live arena.
 4. **Left thumb moves, right thumb aims and fires hearts** (twin-stick controls).
-   Duck behind the blocks for cover — health bars sit above each fighter.
-5. Whoever wins **2 rounds** wins the duel.
-6. The loser's phone shows **„Geh auf ein Knie 💍“** and a suggested line. Tap
+   **Double-tap the left side to dash** for a quick dodge. Duck behind the
+   blocks for cover — health bars sit above each fighter, and **aim assist**
+   nudges your hearts toward your partner so it's easy to land hits.
+5. Grab **power-ups** that keep spawning in the arena (just run over them):
+
+   | | Power-up | Effect |
+   |---|---|---|
+   | ⚡ | Schnellfeuer | fire much faster for a few seconds |
+   | 🔱 | Dreifach | three-way spread shot |
+   | 🛡️ | Schild | blocks all incoming hearts briefly |
+   | 👟 | Speed | move noticeably faster |
+   | 💥 | Große Herzen | bigger, harder-hitting hearts |
+   | 💚 | Heilung | instant health boost |
+
+6. Whoever wins **2 rounds** wins the duel.
+7. The loser's phone shows **„Geh auf ein Knie 💍“** and a suggested line. Tap
    it, and the winner's phone lights up with **„Willst du mich heiraten?“** and
    a big **JA**-button.
-7. Say yes → confetti and hearts on both phones. 🎉
+8. Say yes → confetti and hearts on both phones. 🎉
 
-On a desktop browser you can test with **WASD / arrow keys** to move and the
-**mouse** to aim (click or space to fire).
+On a desktop browser you can test with **WASD / arrow keys** to move, the
+**mouse** to aim (click or space to fire), and **Shift** to dash.
 
 ## Run it locally
 
@@ -110,11 +123,14 @@ Gameplay knobs live at the top of [`server.js`](./server.js):
 
 | Constant | What it does |
 |---|---|
-| `PLAYER_SPEED` | how fast fighters move |
-| `BULLET_SPEED`, `BULLET_DMG` | heart velocity and damage |
-| `FIRE_COOLDOWN` | milliseconds between shots |
-| `MAX_HP` | health per round |
-| `ROUNDS_TO_WIN` | rounds needed to win (2 = best of 3) |
+| `PLAYER_ACCEL`, `PLAYER_FRICTION`, `MAX_SPEED` | movement feel (momentum) |
+| `DASH_SPEED`, `DASH_TIME`, `DASH_COOLDOWN` | the dash dodge |
+| `HEART_SPEED`, `HEART_DMG` | heart velocity and damage |
+| `FIRE_BASE` / `FIRE_RAPID` / `FIRE_BIG` | fire cooldowns per mode |
+| `AIM_ASSIST_ANGLE`, `AIM_ASSIST_STRENGTH` | how much shots snap toward the enemy |
+| `POWERUP_INTERVAL`, `POWERUP_MAX`, `POWERUP_WEIGHTS` | powerup spawning & odds |
+| `FX_DURATION`, `SHIELD_DURATION`, `HEAL_AMOUNT` | powerup strengths |
+| `MAX_HP`, `ROUNDS_TO_WIN` | health per round, rounds to win |
 | `OBSTACLES` | the cover layout (kept point-symmetric so it's fair) |
 
 The German proposal lines are the `SCRIPTS` array in `public/app.js`.
@@ -122,13 +138,17 @@ The German proposal lines are the `SCRIPTS` array in `public/app.js`.
 ## How it works
 
 - **`server.js`** — a tiny Node HTTP server (no framework) that serves the
-  static files and runs an **authoritative 30 Hz game loop** over a WebSocket
-  (`ws`). It owns movement, shooting, collisions, damage, rounds and the
-  proposal handshake, so both phones always agree on the state.
+  static files and runs an **authoritative 60 Hz game loop** over a WebSocket
+  (`ws`). It owns momentum-based movement, dashing, shooting with aim assist,
+  powerup spawning/pickups, collisions, damage, rounds and the proposal
+  handshake, and streams gameplay events (fires, hits, pickups, deaths) for the
+  client's effects.
 - **`public/`** — the mobile-first German client (`index.html`, `style.css`,
-  `app.js`). It renders the arena and the flying hearts on a `<canvas>`,
-  smooths player motion between server updates, draws the twin-stick controls,
-  and auto-reconnects if a phone briefly drops.
+  `app.js`). It renders the arena, hearts, powerups and particle effects on a
+  `<canvas>`, runs **client-side prediction** of your own player (so your
+  movement feels instant) with smooth server reconciliation, interpolates your
+  opponent, draws the twin-stick controls and aim reticle, and auto-reconnects
+  if a phone briefly drops.
 - **`deploy/`** — the systemd unit and Caddyfile used above.
 
 No database, no build step. State lives in memory — perfect for a game you play
