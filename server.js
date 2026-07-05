@@ -35,6 +35,9 @@ const BIG_R = 13;
 const SPREAD_ANGLE = 0.22; // rad between spread hearts
 const AIM_ASSIST_ANGLE = 0.38; // rad: snap toward enemy if aiming within this
 const AIM_ASSIST_STRENGTH = 0.55; // 0..1 blend toward the enemy
+const HOMING_TURN = 4.2; // rad/s that Cupid's homing hearts can steer
+const CHARM_SLOW = 0.45; // movement multiplier while "lovestruck"
+const CHARM_DURATION = 1600; // ms a hit charm lasts
 
 // --- Powerups ------------------------------------------------------------
 const POWERUP_R = 16;
@@ -51,6 +54,8 @@ const POWERUP_WEIGHTS = [
   ['shield', 0.9],
   ['speed', 1],
   ['big', 0.9],
+  ['cupid', 0.8], // homing hearts
+  ['charm', 0.7], // hits lovestruck-slow your partner
 ];
 
 const MAX_HP = 100;
@@ -174,7 +179,8 @@ function newEntity(p, i) {
     dashUntil: 0,
     dashReadyAt: 0,
     prevDash: false,
-    fx: { rapid: 0, spread: 0, shield: 0, speed: 0, big: 0 },
+    charmedUntil: 0,
+    fx: { rapid: 0, spread: 0, shield: 0, speed: 0, big: 0, cupid: 0, charm: 0 },
     input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false, dash: false },
   };
 }
@@ -226,7 +232,8 @@ function startRound(room) {
     e.hp = MAX_HP;
     e.dashUntil = 0;
     e.dashReadyAt = 0;
-    e.fx = { rapid: 0, spread: 0, shield: 0, speed: 0, big: 0 };
+    e.charmedUntil = 0;
+    e.fx = { rapid: 0, spread: 0, shield: 0, speed: 0, big: 0, cupid: 0, charm: 0 };
     e.input.firing = false;
     e.input.dash = false;
     e.prevDash = false;
@@ -280,12 +287,14 @@ function resolveObstacle(e) {
 function integrate(e, dt, now) {
   const dashing = now < e.dashUntil;
   if (!dashing) {
-    e.vx += e.input.mx * PLAYER_ACCEL * dt;
-    e.vy += e.input.my * PLAYER_ACCEL * dt;
+    const charmed = e.charmedUntil > now ? CHARM_SLOW : 1;
+    e.vx += e.input.mx * PLAYER_ACCEL * dt * charmed;
+    e.vy += e.input.my * PLAYER_ACCEL * dt * charmed;
     const f = Math.max(0, 1 - PLAYER_FRICTION * dt);
     e.vx *= f;
     e.vy *= f;
-    const sp = e.fx.speed > now ? MAX_SPEED * SPEED_MULT : MAX_SPEED;
+    let sp = e.fx.speed > now ? MAX_SPEED * SPEED_MULT : MAX_SPEED;
+    sp *= charmed;
     const v = Math.hypot(e.vx, e.vy);
     if (v > sp) {
       e.vx = (e.vx / v) * sp;
@@ -373,6 +382,8 @@ function fire(room, e, now) {
 
   const baseAng = Math.atan2(dy, dx);
   e.angle = baseAng;
+  const homing = e.fx.cupid > now;
+  const charm = e.fx.charm > now;
   const speed = big ? BIG_SPEED : HEART_SPEED;
   const dmg = big ? BIG_DMG : HEART_DMG;
   const r = big ? BIG_R : HEART_R;
@@ -391,6 +402,9 @@ function fire(room, e, now) {
       vy: cdy * speed,
       r,
       dmg,
+      homing,
+      charm,
+      speed,
     });
   }
   pushEvent(room, { t: 'fire', x: e.x + Math.cos(baseAng) * PLAYER_R, y: e.y + Math.sin(baseAng) * PLAYER_R, a: baseAng, c: e.spawn });
@@ -471,6 +485,18 @@ function tick(room) {
     // Bullets.
     const survivors = [];
     for (const b of g.bullets) {
+      if (b.homing) {
+        const enemy = g.entities.find((o) => o.id !== b.owner && o.hp > 0);
+        if (enemy) {
+          const cur = Math.atan2(b.vy, b.vx);
+          let want = Math.atan2(enemy.y - b.y, enemy.x - b.x);
+          let diff = ((want - cur + Math.PI) % (Math.PI * 2)) - Math.PI;
+          const step = Math.max(-HOMING_TURN * dt, Math.min(HOMING_TURN * dt, diff));
+          const na = cur + step;
+          b.vx = Math.cos(na) * b.speed;
+          b.vy = Math.sin(na) * b.speed;
+        }
+      }
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       if (b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) continue;
@@ -488,6 +514,10 @@ function tick(room) {
           } else {
             e.hp = Math.max(0, e.hp - b.dmg);
             pushEvent(room, { t: 'hit', x: b.x, y: b.y, c: e.spawn, victim: e.id });
+            if (b.charm && e.hp > 0) {
+              e.charmedUntil = now + CHARM_DURATION;
+              pushEvent(room, { t: 'charm', x: e.x, y: e.y, c: e.spawn, victim: e.id });
+            }
             if (e.hp <= 0) handleDeath(room, e);
           }
           break;
@@ -547,12 +577,15 @@ function broadcastState(room) {
       hp: e.hp,
       wins: e.wins,
       dashCd: Math.max(0, e.dashReadyAt - now),
+      charmed: Math.max(0, e.charmedUntil - now),
       fx: {
         rapid: fxRemaining(e, 'rapid', now),
         spread: fxRemaining(e, 'spread', now),
         shield: fxRemaining(e, 'shield', now),
         speed: fxRemaining(e, 'speed', now),
         big: fxRemaining(e, 'big', now),
+        cupid: fxRemaining(e, 'cupid', now),
+        charm: fxRemaining(e, 'charm', now),
       },
     })),
     bullets: g.bullets.map((b) => ({ i: b.id, x: Math.round(b.x), y: Math.round(b.y), c: b.ownerSpawn, r: b.r })),
@@ -693,6 +726,15 @@ function handleMessage(ws, msg) {
       e.input.ay = clampNum(msg.ay);
       e.input.firing = !!msg.firing;
       e.input.dash = !!msg.dash;
+      break;
+    }
+    case 'emote': {
+      const room = rooms.get(ws.roomCode);
+      if (!room) return;
+      const player = room.players.find((p) => p.id === ws.playerId);
+      if (!player) return;
+      const kind = ['kiss', 'heart', 'wink', 'rose'].includes(msg.kind) ? msg.kind : 'heart';
+      broadcast(room, { type: 'emote', from: player.id, kind });
       break;
     }
     case 'propose': {

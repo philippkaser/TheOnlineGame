@@ -1,16 +1,17 @@
 :root {
-  --bg: #1a0f2e;
-  --bg-2: #2a1747;
-  --card: rgba(255, 255, 255, 0.06);
-  --card-border: rgba(255, 255, 255, 0.12);
-  --text: #fdf4ff;
-  --muted: #c9b8e0;
-  --pink: #ff5c8a;
+  --bg: #2a1030;
+  --bg-2: #3a1747;
+  --card: rgba(255, 255, 255, 0.1);
+  --card-border: rgba(255, 255, 255, 0.22);
+  --text: #fff4f8;
+  --muted: #ffd6e6;
+  --pink: #ff6f91;
   --pink-deep: #e0356b;
   --gold: #ffd76a;
   --green: #4ade80;
   --red: #fb7185;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --shadow: 0 14px 40px rgba(120, 20, 70, 0.4);
+  --script: 'Snell Roundhand', 'Segoe Script', 'Bradley Hand', 'Brush Script MT', cursive;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -23,7 +24,7 @@ html, body {
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 20% 0%, #3a1d5e 0%, var(--bg) 55%, #100820 100%);
+  background: linear-gradient(160deg, #3a1b4e 0%, #7a2f5e 42%, #c94f7c 74%, #ff9a8b 100%);
   background-attachment: fixed;
   overflow: hidden;
   user-select: none;
@@ -58,7 +59,7 @@ body {
 }
 
 /* --- Typography --- */
-h1 { font-size: 2.6rem; margin: 0.2em 0; line-height: 1.05; }
+h1 { font-family: var(--script); font-weight: 600; font-size: 3.2rem; margin: 0.2em 0; line-height: 1.05; text-shadow: 0 3px 16px rgba(255, 111, 145, 0.5); }
 h2 { font-size: 1.6rem; margin: 0 0 0.4em; line-height: 1.2; }
 .tagline { color: var(--muted); font-size: 1.1rem; line-height: 1.5; margin: 0.5em 0 0; }
 
@@ -210,6 +211,51 @@ h2 { font-size: 1.6rem; margin: 0 0 0.4em; line-height: 1.2; }
   background: #100820;
 }
 .how-to { color: var(--muted); font-size: 0.85rem; margin-top: 14px; max-width: 320px; line-height: 1.5; }
+
+/* --- Emote bar (in-game) --- */
+.emote-bar {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(40, 12, 40, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  z-index: 20;
+}
+.emote-btn {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.emote-btn:active { transform: scale(0.85); background: rgba(255, 255, 255, 0.32); }
+
+.emote-fly {
+  position: fixed;
+  bottom: auto;
+  top: var(--from);
+  font-size: 3.2rem;
+  pointer-events: none;
+  z-index: 70;
+  animation: emote-fly 3.1s ease-in forwards;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.3));
+}
+@keyframes emote-fly {
+  0% { top: var(--from); opacity: 0; transform: scale(0.4) rotate(-10deg); }
+  15% { opacity: 1; transform: scale(1.2) rotate(6deg); }
+  85% { opacity: 1; }
+  100% { top: var(--to); opacity: 0; transform: scale(0.9) rotate(-6deg); }
+}
 
 /* --- Utility --- */
 .hidden { display: none !important; }

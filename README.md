@@ -29,12 +29,17 @@ However the duel ends, someone gets down on one knee.
    | 👟 | Speed | move noticeably faster |
    | 💥 | Große Herzen | bigger, harder-hitting hearts |
    | 💚 | Heilung | instant health boost |
+   | 💘 | Amors Pfeil | your hearts home in on your partner |
+   | 💋 | Kuss | your hits leave your partner lovestruck (slowed) |
 
-6. Whoever wins **2 rounds** wins the duel.
-7. The loser's phone shows **„Geh auf ein Knie 💍“** and a suggested line. Tap
+6. **Blow your partner a kiss** anytime with the emote bar at the top
+   (💋 ❤️ 😘 🌹) — it flies across both phones. Sweet love notes appear
+   between rounds, too.
+7. Whoever wins **2 rounds** wins the duel.
+8. The loser's phone shows **„Geh auf ein Knie 💍“** and a suggested line. Tap
    it, and the winner's phone lights up with **„Willst du mich heiraten?“** and
    a big **JA**-button.
-8. Say yes → confetti and hearts on both phones. 🎉
+9. Say yes → confetti and hearts on both phones. 🎉
 
 On a desktop browser you can test with **WASD / arrow keys** to move, the
 **mouse** to aim (click or space to fire), and **Shift** to dash.
@@ -144,11 +149,13 @@ The German proposal lines are the `SCRIPTS` array in `public/app.js`.
   handshake, and streams gameplay events (fires, hits, pickups, deaths) for the
   client's effects.
 - **`public/`** — the mobile-first German client (`index.html`, `style.css`,
-  `app.js`). It renders the arena, hearts, powerups and particle effects on a
-  `<canvas>`, runs **client-side prediction** of your own player (so your
-  movement feels instant) with smooth server reconciliation, interpolates your
-  opponent, draws the twin-stick controls and aim reticle, and auto-reconnects
-  if a phone briefly drops.
+  `app.js`). Everything is hand-drawn on a `<canvas>` in a soft romantic art
+  style: a sunset sky with drifting hearts, a pink garden mat, flower-bed
+  cover, and **cute winged-cupid characters** with blushing faces (hearts in
+  their eyes when they're lovestruck). It runs **client-side prediction** of
+  your own player (so movement feels instant) with smooth server
+  reconciliation, interpolates your opponent, draws the twin-stick controls,
+  aim reticle and emote bar, and auto-reconnects if a phone briefly drops.
 - **`deploy/`** — the systemd unit and Caddyfile used above.
 
 No database, no build step. State lives in memory — perfect for a game you play

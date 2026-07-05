@@ -14,7 +14,19 @@ const POWERUPS = {
   shield: { emoji: '🛡️', ring: '#38bdf8', label: 'Schild' },
   speed: { emoji: '👟', ring: '#34d399', label: 'Speed' },
   big: { emoji: '💥', ring: '#fb7185', label: 'Große Herzen' },
+  cupid: { emoji: '💘', ring: '#ff8fb1', label: 'Amors Pfeil' },
+  charm: { emoji: '💋', ring: '#ff4d6d', label: 'Kuss' },
 };
+
+// Sweet nothings shown between rounds.
+const LOVE_NOTES = [
+  'Kämpfe schön, mein Schatz 💕',
+  'Möge die/der Verliebtere gewinnen 💘',
+  'Alles ist fair in Liebe & Herzchen 🌹',
+  'Ich hab dich zum Fressen gern 😘',
+  'Nur ein Spiel — aber mein Herz meint es ernst ❤️',
+  'Küsschen zählen leider nicht als Treffer 💋',
+];
 
 const state = {
   ws: null,
@@ -26,6 +38,7 @@ const state = {
   latest: null,
   self: null, // predicted { x, y, vx, vy, dashUntil, dashReadyAt, prevDash }
   selfFx: {},
+  selfCharm: 0,
   opp: {}, // smoothed opponent render pos by id
   input: { mx: 0, my: 0, ax: 0, ay: 0, firing: false, dash: false },
   inputTimer: null,
@@ -88,6 +101,28 @@ $('#btn-propose').addEventListener('click', () => {
 $('#btn-yes').addEventListener('click', () => sendMsg({ type: 'accept' }));
 $('#btn-again').addEventListener('click', () => sendMsg({ type: 'playAgain' }));
 
+// Emote bar — blow your partner a kiss mid-duel.
+const EMOTE_GLYPH = { kiss: '💋', heart: '❤️', wink: '😘', rose: '🌹' };
+$$('.emote-btn').forEach((b) => {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sendMsg({ type: 'emote', kind: b.dataset.kind });
+  });
+});
+function showEmote(msg) {
+  const mine = msg.from === state.playerId;
+  const glyph = EMOTE_GLYPH[msg.kind] || '❤️';
+  const el = document.createElement('div');
+  el.className = 'emote-fly';
+  el.textContent = glyph;
+  el.style.left = 8 + Math.random() * 74 + 'vw';
+  // Yours rise from the bottom, your partner's drift from the top.
+  el.style.setProperty('--from', mine ? '100vh' : '-12vh');
+  el.style.setProperty('--to', mine ? '-12vh' : '100vh');
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
 // --- Messages ---------------------------------------------------------------
 function handleMessage(msg) {
   switch (msg.type) {
@@ -109,6 +144,9 @@ function handleMessage(msg) {
       break;
     case 'state':
       onState(msg);
+      break;
+    case 'emote':
+      showEmote(msg);
       break;
     case 'gameOver':
       renderGameOver(msg);
@@ -166,6 +204,7 @@ function startGame(cfg) {
   state.trails = {};
   particles.length = 0;
   state.shake = 0;
+  buildBackdrop();
   stopConfetti();
   show('screen-game');
   resizeCanvas();
@@ -203,6 +242,7 @@ function onState(msg) {
   const me = msg.players.find((p) => p.id === state.playerId);
   if (me) {
     state.selfFx = me.fx;
+    state.selfCharm = me.charmed || 0;
     if (!state.self) {
       state.self = { x: me.x, y: me.y, vx: me.vx, vy: me.vy, dashUntil: 0, dashReadyAt: now + me.dashCd, prevDash: false };
     } else {
@@ -268,6 +308,12 @@ function handleEvent(ev) {
       const a = Math.random() * Math.PI * 2;
       const sp = 30 + Math.random() * 70;
       particles.push({ x: ev.x, y: ev.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.3, max: 0.3, r: 5, color: COLORS_SOFT[ev.c] + '0.5)', kind: 'puff' });
+    }
+  } else if (ev.t === 'charm') {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 40 + Math.random() * 90;
+      particles.push({ x: ev.x, y: ev.y - 20, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, life: 0.8, max: 0.8, r: 4, color: '#ff4d6d', kind: 'heart' });
     }
   } else if (ev.t === 'death') {
     for (let i = 0; i < 40; i++) {
@@ -456,12 +502,13 @@ function predictSelf(dt) {
 
   const dashing = now < s.dashUntil;
   if (!dashing) {
-    s.vx += inp.mx * p.accel * dt;
-    s.vy += inp.my * p.accel * dt;
+    const charmed = state.selfCharm > 0 ? 0.45 : 1;
+    s.vx += inp.mx * p.accel * dt * charmed;
+    s.vy += inp.my * p.accel * dt * charmed;
     const f = Math.max(0, 1 - p.friction * dt);
     s.vx *= f;
     s.vy *= f;
-    const sp = (state.selfFx.speed > 0 ? p.maxSpeed * p.speedMult : p.maxSpeed);
+    const sp = (state.selfFx.speed > 0 ? p.maxSpeed * p.speedMult : p.maxSpeed) * charmed;
     const v = Math.hypot(s.vx, s.vy);
     if (v > sp) {
       s.vx = (s.vx / v) * sp;
@@ -504,9 +551,106 @@ function playerRenderPos(p) {
   return r;
 }
 
+let backdrop = [];
+function buildBackdrop() {
+  backdrop = [];
+  for (let i = 0; i < 26; i++) {
+    backdrop.push({
+      x: Math.random(),
+      y: Math.random(),
+      s: 0.4 + Math.random() * 1.1,
+      sp: 0.008 + Math.random() * 0.02,
+      ph: Math.random() * Math.PI * 2,
+      heart: Math.random() < 0.5,
+    });
+  }
+}
+
+function drawSky(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, view.cssH);
+  g.addColorStop(0, '#3a1b4e');
+  g.addColorStop(0.45, '#7a2f5e');
+  g.addColorStop(0.8, '#c94f7c');
+  g.addColorStop(1, '#ff9a8b');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, view.cssW, view.cssH);
+
+  // Drifting hearts + twinkling sparkles.
+  for (const d of backdrop) {
+    const y = (d.y - ((t * d.sp) % 1) + 1) % 1;
+    const px = d.x * view.cssW + Math.sin(t + d.ph) * 12;
+    const py = y * view.cssH;
+    const tw = 0.25 + 0.2 * (Math.sin(t * 2 + d.ph) + 1);
+    if (d.heart) {
+      drawHeart(px, py, 6 * d.s, `rgba(255,220,235,${tw * 0.7})`);
+    } else {
+      ctx.globalAlpha = tw;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(px, py, d.s * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawFlowerBed(o) {
+  const x = wx(o.x);
+  const y = wy(o.y);
+  const w = wsc(o.w);
+  const h = wsc(o.h);
+  const r = Math.min(w, h) * 0.28;
+  // Soft shadow.
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 5;
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, '#5fbf7a');
+  g.addColorStop(1, '#2f8f57');
+  ctx.fillStyle = g;
+  roundRect(x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+  // Little flowers scattered on top (deterministic per obstacle).
+  const flowerColors = ['#ff6f91', '#ffd76a', '#ff9a8b', '#ffffff', '#ff5c8a'];
+  let seed = Math.round(o.x * 13 + o.y * 7);
+  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+  const count = Math.max(3, Math.round((o.w * o.h) / 1400));
+  for (let i = 0; i < count; i++) {
+    const fx = x + 10 + rnd() * (w - 20);
+    const fy = y + 10 + rnd() * (h - 20);
+    const fr = wsc(4 + rnd() * 3);
+    const col = flowerColors[Math.floor(rnd() * flowerColors.length)];
+    ctx.fillStyle = col;
+    for (let p = 0; p < 5; p++) {
+      const a = (p / 5) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(fx + Math.cos(a) * fr, fy + Math.sin(a) * fr, fr * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffe08a';
+    ctx.beginPath();
+    ctx.arc(fx, fy, fr * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function draw() {
   const { w, h } = state.cfg.arena;
+  const t = performance.now() / 1000;
   ctx.clearRect(0, 0, view.cssW, view.cssH);
+  drawSky(t);
 
   ctx.save();
   if (state.shake > 0) {
@@ -514,34 +658,36 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
   }
 
-  // Floor + grid.
-  ctx.fillStyle = '#160c28';
-  ctx.fillRect(wx(0), wy(0), wsc(w), wsc(h));
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  for (let gx = 0; gx <= w; gx += 60) {
-    ctx.beginPath();
-    ctx.moveTo(wx(gx), wy(0));
-    ctx.lineTo(wx(gx), wy(h));
-    ctx.stroke();
+  // Garden mat (the play area).
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 30;
+  const mat = ctx.createLinearGradient(0, wy(0), 0, wy(h));
+  mat.addColorStop(0, '#ffdbe6');
+  mat.addColorStop(1, '#ffc2d6');
+  ctx.fillStyle = mat;
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
+  ctx.fill();
+  ctx.restore();
+  // Soft heart lattice on the mat.
+  ctx.save();
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
+  ctx.clip();
+  ctx.globalAlpha = 0.5;
+  for (let gy = 40; gy < h; gy += 80) {
+    for (let gx = ((gy / 80) % 2 === 0 ? 40 : 80); gx < w; gx += 80) {
+      drawHeart(wx(gx), wy(gy), wsc(7), 'rgba(255,140,177,0.35)');
+    }
   }
-  for (let gy = 0; gy <= h; gy += 60) {
-    ctx.beginPath();
-    ctx.moveTo(wx(0), wy(gy));
-    ctx.lineTo(wx(w), wy(gy));
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(wx(0), wy(0), wsc(w), wsc(h));
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  roundRect(wx(0), wy(0), wsc(w), wsc(h), wsc(24));
+  ctx.stroke();
 
-  // Obstacles.
-  ctx.fillStyle = '#3a2560';
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-  for (const o of state.cfg.obstacles) {
-    ctx.fillRect(wx(o.x), wy(o.y), wsc(o.w), wsc(o.h));
-    ctx.strokeRect(wx(o.x), wy(o.y), wsc(o.w), wsc(o.h));
-  }
+  // Obstacles as flower beds.
+  for (const o of state.cfg.obstacles) drawFlowerBed(o);
 
   const s = state.latest;
   if (s) {
@@ -631,52 +777,110 @@ function drawPlayer(p) {
   const color = COLORS[p.spawn];
   const dead = p.hp <= 0;
   const t = performance.now() / 1000;
+  const charmed = (p.charmed || 0) > 0;
 
   ctx.globalAlpha = dead ? 0.25 : 1;
 
   // Speed aura.
   if (p.fx.speed > 0) {
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 8 + Math.sin(t * 10) * 2, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(52,211,153,0.5)';
+    ctx.arc(cx, cy, rad + 9 + Math.sin(t * 10) * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(52,211,153,0.55)';
     ctx.lineWidth = 3;
     ctx.stroke();
   }
-  // Big glow.
-  if (p.fx.big > 0) {
+
+  // Flapping wings (behind the body).
+  const flap = Math.sin(t * 14 + p.spawn) * 0.35;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  for (const dir of [-1, 1]) {
     ctx.save();
-    ctx.shadowColor = '#fb7185';
-    ctx.shadowBlur = 22;
+    ctx.scale(dir, 1);
+    ctx.rotate(-0.5 + flap);
     ctx.beginPath();
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.moveTo(rad * 0.5, -rad * 0.2);
+    ctx.quadraticCurveTo(rad * 1.9, -rad * 1.2, rad * 1.7, rad * 0.2);
+    ctx.quadraticCurveTo(rad * 1.3, rad * 0.5, rad * 0.5, rad * 0.3);
+    ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+  ctx.restore();
+
+  // Body (glossy).
+  ctx.save();
+  if (p.fx.big > 0) {
+    ctx.shadowColor = '#fb7185';
+    ctx.shadowBlur = 24;
+  }
+  const bg = ctx.createRadialGradient(cx - rad * 0.35, cy - rad * 0.4, rad * 0.2, cx, cy, rad);
+  bg.addColorStop(0, '#ffffff');
+  bg.addColorStop(0.35, color);
+  bg.addColorStop(1, shade(color, -0.25));
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Face: blush + eyes + smile (upright, not rotated).
+  const eyeY = cy - rad * 0.12;
+  const eyeDx = rad * 0.4;
+  // Blush.
+  ctx.fillStyle = 'rgba(255,120,150,0.55)';
+  ctx.beginPath();
+  ctx.arc(cx - rad * 0.55, cy + rad * 0.15, rad * 0.22, 0, Math.PI * 2);
+  ctx.arc(cx + rad * 0.55, cy + rad * 0.15, rad * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  if (charmed) {
+    // Hearts-in-eyes when lovestruck.
+    drawHeart(cx - eyeDx, eyeY, rad * 0.42, '#ff2d6d');
+    drawHeart(cx + eyeDx, eyeY, rad * 0.42, '#ff2d6d');
   } else {
+    ctx.fillStyle = '#2a1630';
     ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.arc(cx - eyeDx, eyeY, rad * 0.14, 0, Math.PI * 2);
+    ctx.arc(cx + eyeDx, eyeY, rad * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye sparkle.
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx - eyeDx + rad * 0.05, eyeY - rad * 0.05, rad * 0.05, 0, Math.PI * 2);
+    ctx.arc(cx + eyeDx + rad * 0.05, eyeY - rad * 0.05, rad * 0.05, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  // Barrel.
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = wsc(6);
+  // Smile.
+  ctx.strokeStyle = '#2a1630';
+  ctx.lineWidth = Math.max(1.5, wsc(2));
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(p.angle) * rad * 1.5, cy + Math.sin(p.angle) * rad * 1.5);
+  ctx.arc(cx, cy + rad * 0.28, rad * 0.32, 0.15 * Math.PI, 0.85 * Math.PI);
   ctx.stroke();
+
+  // Aim pointer: a little heart at the rim in the aim direction.
+  const px = cx + Math.cos(p.angle) * (rad + wsc(9));
+  const py = cy + Math.sin(p.angle) * (rad + wsc(9));
+  drawHeart(px, py, wsc(9), '#fff');
 
   // Shield bubble.
   if (p.fx.shield > 0) {
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 9, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rad + 10, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(56,189,248,${0.14 + Math.sin(t * 8) * 0.05})`;
     ctx.fill();
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = '#7dd3fc';
     ctx.lineWidth = 2.5;
     ctx.stroke();
+  }
+
+  // Charmed: little hearts orbiting the head.
+  if (charmed) {
+    for (let i = 0; i < 3; i++) {
+      const a = t * 3 + (i / 3) * Math.PI * 2;
+      drawHeart(cx + Math.cos(a) * (rad + 10), cy - rad - 6 + Math.sin(a) * 4, wsc(6), '#ff4d6d');
+    }
   }
 
   // "You" ring.
@@ -684,7 +888,7 @@ function drawPlayer(p) {
     ctx.strokeStyle = '#ffd76a';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(cx, cy, rad + 5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, rad + 6, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -696,6 +900,8 @@ function drawPlayer(p) {
   if (p.fx.big > 0) active.push('💥');
   if (p.fx.speed > 0) active.push('👟');
   if (p.fx.shield > 0) active.push('🛡️');
+  if (p.fx.cupid > 0) active.push('💘');
+  if (p.fx.charm > 0) active.push('💋');
   if (active.length) {
     ctx.font = `${Math.round(wsc(14))}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
@@ -747,9 +953,12 @@ function drawHud(s) {
     ctx.fillStyle = '#ffd76a';
     ctx.font = '800 90px system-ui, sans-serif';
     ctx.fillText(s.count > 0 ? String(s.count) : 'LOS!', cx, cy);
-    ctx.fillStyle = '#fdf4ff';
+    ctx.fillStyle = '#fff0f5';
     ctx.font = '700 22px system-ui, sans-serif';
     ctx.fillText(`Runde ${s.round}`, cx, cy - 90);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'italic 600 16px Georgia, serif';
+    ctx.fillText(LOVE_NOTES[(s.round - 1) % LOVE_NOTES.length], cx, cy + 80);
   }
 }
 
@@ -821,6 +1030,17 @@ function drawParticle(p) {
   ctx.fill();
   ctx.globalAlpha = 1;
 }
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = amt < 0 ? 1 + amt : 1;
+  const add = amt < 0 ? 0 : amt * 255;
+  r = Math.round(r * f + add);
+  g = Math.round(g * f + add);
+  b = Math.round(b * f + add);
+  return `rgb(${Math.min(255, r)},${Math.min(255, g)},${Math.min(255, b)})`;
+}
+
 function applyAlpha(color, a) {
   if (color.startsWith('#')) {
     const n = parseInt(color.slice(1), 16);
